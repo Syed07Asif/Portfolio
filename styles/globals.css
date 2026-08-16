@@ -2,6 +2,17 @@
 @import "./tokens.css";
 
 /*
+ * The site is dark-mode-only — `<html>` always carries the `dark` class
+ * (app/layout.tsx), never toggled. Without this, Tailwind v4's `dark:`
+ * variant defaults to matching `prefers-color-scheme: dark`, so a visitor
+ * whose OS is in light mode would miss `dark:` utilities entirely (used by
+ * shadcn/ui's generated admin components) even though the rest of the site
+ * is already unconditionally dark via the tokens below. This makes `dark:`
+ * follow the class instead, matching how the class is actually used here.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
  * Tailwind v4 is CSS-first: this @theme block IS the Tailwind config for
  * this project (no tailwind.config.ts — see docs/architecture.md's Design
  * System section for why introducing one would be dead weight in v4). Every
@@ -40,6 +51,27 @@
   --color-primary-hover: var(--color-primary-hover);
   --color-primary-foreground: var(--color-primary-foreground);
   --color-ring: var(--color-ring);
+
+  /*
+   * shadcn/ui compatibility — components/admin/ui/*.tsx (admin panel +
+   * overlays only, per CLAUDE.md) expect this exact variable set. Every one
+   * is an alias onto a token already defined above; nothing here is a new
+   * colour. `--color-accent` doubling as shadcn's neutral hover-highlight
+   * slot is deliberate, not an oversight — admin hover states pick up the
+   * same chartreuse brand accent as the rest of the site instead of an
+   * unrelated grey.
+   */
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-foreground);
+  --color-popover: var(--color-surface-raised);
+  --color-popover-foreground: var(--color-foreground);
+  --color-secondary: var(--color-surface-raised);
+  --color-secondary-foreground: var(--color-foreground);
+  --color-muted: var(--color-surface-raised);
+  --color-muted-foreground: var(--color-foreground-muted);
+  --color-destructive: var(--color-danger);
+  --color-input: var(--color-border-strong);
+  --radius: var(--radius-md);
 
   /* Fonts */
   --font-display: var(--font-display);
@@ -112,6 +144,10 @@
   --ease-out-quart: var(--ease-out-quart);
   --ease-in-out-quart: var(--ease-in-out-quart);
   --ease-spring: var(--ease-spring);
+
+  /* Skeleton shimmer: same "pulse" keyframe Tailwind ships by default, just
+     retimed to our --duration-loop token instead of the stock 2s. */
+  --animate-pulse: pulse var(--duration-loop) cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 body {

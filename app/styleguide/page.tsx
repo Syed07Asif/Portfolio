@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ColorSwatches } from "./_components/ColorSwatches";
 import { MotionDemos } from "./_components/MotionDemos";
+import { PrimitivesShowcase } from "./_components/PrimitivesShowcase";
 import { RadiusScale } from "./_components/RadiusScale";
-import { Section } from "./_components/Section";
 import { ShadowScale } from "./_components/ShadowScale";
 import { SpacingScale } from "./_components/SpacingScale";
+import { StyleguideSection } from "./_components/StyleguideSection";
 import { TypeScale } from "./_components/TypeScale";
 
 export const metadata: Metadata = {
@@ -27,40 +28,54 @@ export default function StyleguidePage() {
         <p className="text-caption uppercase tracking-wider text-accent">Internal tool</p>
         <h1 className="text-display font-display font-extrabold text-foreground">Styleguide</h1>
         <p className="text-body-lg text-foreground-secondary max-w-2xl">
-          Every design token and motion variant from styles/tokens.css and lib/motion.ts, rendered
-          live. Visual QA for the rest of the build — not part of the public site.
+          Every design token, motion variant, and UI primitive, rendered live. Visual QA for the rest
+          of the build — not part of the public site.
         </p>
       </div>
 
-      <Section title="Colors" description="Every colour token, rendered via its Tailwind utility class.">
+      <StyleguideSection title="Colors" description="Every colour token, rendered via its Tailwind utility class.">
         <ColorSwatches />
-      </Section>
+      </StyleguideSection>
 
-      <Section title="Typography" description="The full type scale — display through caption.">
+      <StyleguideSection title="Typography" description="The full type scale — display through caption.">
         <TypeScale />
-      </Section>
+      </StyleguideSection>
 
-      <Section
+      <StyleguideSection
         title="Spacing"
         description="The numeric scale every p-*/gap-*/w-* utility derives from, plus the named section-rhythm tokens."
       >
         <SpacingScale />
-      </Section>
+      </StyleguideSection>
 
-      <Section title="Radius & border width" description="Corner radius scale and the three border-width tokens.">
+      <StyleguideSection
+        title="Radius & border width"
+        description="Corner radius scale and the three border-width tokens."
+      >
         <RadiusScale />
-      </Section>
+      </StyleguideSection>
 
-      <Section title="Shadow & glow" description="Elevation shadows plus the accent/cyan/warm glow tokens.">
+      <StyleguideSection
+        title="Shadow & glow"
+        description="Elevation shadows plus the accent/cyan/warm glow tokens."
+      >
         <ShadowScale />
-      </Section>
+      </StyleguideSection>
 
-      <Section
+      <StyleguideSection
         title="Motion"
         description="Every variant exported from lib/motion.ts. Reduced-motion handling is automatic (MotionProvider) — try enabling 'Reduce motion' in your OS accessibility settings and replaying these."
       >
         <MotionDemos />
-      </Section>
+      </StyleguideSection>
+
+      <StyleguideSection
+        id="primitives"
+        title="Primitives"
+        description="Every component from components/ui, every variant, every state — plus a themed shadcn/ui check. No section in Phase 7+ should define its own button/card/badge styling."
+      >
+        <PrimitivesShowcase />
+      </StyleguideSection>
     </main>
   );
 }
