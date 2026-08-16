@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://syed07asif.github.io/Portfolio/sitemap.xml
