@@ -1,0 +1,35 @@
+/*
+ * Design tokens — the only place a colour value should be written literally.
+ * Dark mode only for now. When a light theme is added, it should be a second
+ * block here (e.g. `:root[data-theme="light"]`) — components must never be
+ * touched, since they only ever reference these custom properties.
+ */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --color-background: #0a0a0b;
+  --color-surface: #131316;
+  --color-surface-raised: #1c1c21;
+  --color-border: #2a2a30;
+  --color-border-strong: #3a3a42;
+
+  /* Text */
+  --color-foreground: #f4f4f5;
+  --color-foreground-muted: #a1a1aa;
+  --color-foreground-subtle: #6b6b74;
+
+  /* Brand / accent */
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+  --color-primary-foreground: #ffffff;
+
+  /* Status */
+  --color-success: #22c55e;
+  --color-warning: #eab308;
+  --color-danger: #ef4444;
+
+  /* Focus ring */
+  --color-ring: var(--color-primary);
+}

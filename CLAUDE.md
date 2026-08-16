@@ -1,0 +1,63 @@
+# CLAUDE.md
+
+Guidance for working on this repository. This is a long-term, multi-phase build — read this file before making structural changes.
+
+## Core principle
+
+**The code defines how the portfolio works. The database defines what the portfolio contains.**
+
+Adding a project, job, skill, or certification must mean adding a database row — never writing new frontend code. If a change to "add content" requires touching a `.tsx` file, something is wrong: either the schema is missing a field, or the UI is hard-coding something that belongs in Supabase.
+
+## Stack (fixed — do not substitute)
+
+- Next.js (latest stable, App Router) + React + TypeScript (strict)
+- Tailwind CSS for styling
+- shadcn/ui for admin/interactive primitives only
+- Framer Motion (`motion`) for animation
+- Supabase for Postgres + Auth + Storage
+- Zod for validation
+- Lucide for icons
+- npm as package manager, Vercel as host
+
+Do not introduce alternative libraries that overlap with the above (e.g. a second styling system, a second animation library, a second ORM/query layer) without an explicit decision to change this file.
+
+## Folder structure
+
+```
+app/            routes (public site + /admin), App Router
+components/
+  ui/           generic, content-agnostic primitives (shadcn/ui)
+  sections/     public-site sections, receive content as props
+  admin/        admin panel UI (editors, tables, forms)
+  layout/       shared chrome: header, footer, nav, page shells
+lib/
+  supabase/     Supabase client factories (browser / server / service-role)
+  data/         data access functions — the only layer that queries Supabase
+  utils/        generic helpers, no framework or content coupling
+  constants/    fixed, non-content configuration values
+types/          shared TypeScript types + Zod schemas for content models
+hooks/          custom React hooks
+styles/         global CSS and design tokens (globals.css, tokens.css)
+supabase/
+  migrations/   one SQL file per schema change
+  seed/         SQL seed data for local development
+docs/           architecture, database, deployment, content-management, development
+tests/          test files, mirroring the structure under test
+```
+
+Each of these folders has its own README with more detail — read it before adding files there.
+
+## Naming conventions
+
+- **Components:** PascalCase (`ProjectCard.tsx`)
+- **Functions/variables:** camelCase (`getProjects`, `formatDateRange`)
+- **Route files/folders:** kebab-case (`app/case-studies/[slug]/page.tsx`)
+- **Hooks:** camelCase, `use`-prefixed (`useMediaQuery`)
+
+## Rules
+
+1. **Content is never hard-coded.** Project names, job history, skills, certifications, copy for portfolio sections — all of it lives in Supabase and is fetched through `lib/data`. Components render whatever they're given as props.
+2. **Secrets never reach client components.** `SUPABASE_SERVICE_ROLE_KEY` and any other server-only secret must only be read in server-side code (Server Components, Route Handlers, Server Actions) — never imported into a file marked `"use client"`, never sent to the browser.
+3. **All schema changes go through a migration file** in `supabase/migrations`. No hand-editing the schema in the Supabase dashboard and leaving it undocumented — the migration files are the source of truth for the database shape.
+4. **Colors are CSS custom properties**, defined in `styles/tokens.css`. Don't hard-code a hex/rgb value in a component.
+5. **Don't scaffold ahead of the current phase.** This is a multi-phase build — implement what's asked for in the current phase, not speculative future features.
