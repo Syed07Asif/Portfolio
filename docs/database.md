@@ -8,6 +8,11 @@ is correct and this file is stale — fix the file, don't trust it blindly.
 Per [CLAUDE.md](../CLAUDE.md), every schema change is a new migration file.
 Nothing here is ever hand-edited in the Supabase dashboard.
 
+Row Level Security is enabled on every table below, added in a later,
+separate migration so this one stays untouched. See
+[docs/architecture.md's Security section](./architecture.md#security) for
+the RLS policies, storage buckets, and what "admin" means.
+
 ## Conventions that apply to every table
 
 - `id uuid primary key default gen_random_uuid()`

@@ -1,0 +1,13 @@
+import { createBrowserClient } from "@supabase/ssr";
+
+/**
+ * Browser client — anon key only. Safe to use in client components; RLS
+ * policies (see supabase/migrations) are what actually restrict what it can
+ * read or write, not this key.
+ */
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
