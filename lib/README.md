@@ -7,5 +7,6 @@ Non-component application code:
 - `validation/` — one Zod schema per entity, the single source of truth for admin form validation and server-side validation (both here and in later phases).
 - `utils/` — generic helpers (formatting, date logic, etc.) with no framework or content coupling.
 - `constants.ts` — shared non-content constants: section ids, fallback nav, breakpoints, animation durations, cache tags, storage bucket limits.
+- `motion.ts` — reusable Framer Motion variants (`fadeInUp`, `staggerContainer`, `revealOnScroll`, ...). Sections import these rather than writing their own; reduced-motion handling is automatic via `components/motion/MotionProvider`, not something a variant needs to account for.
 
 Functions here are camelCase.

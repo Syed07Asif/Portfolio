@@ -317,3 +317,104 @@ one testability gap: `unstable_cache` (used by every `getX`) throws
 `Invariant: incrementalCache missing` outside a full Next.js server runtime,
 which is exactly why this script calls the unwrapped `fetchX` functions
 instead of `getX`.
+
+## Design system
+
+The full token set lives in [`styles/tokens.css`](../styles/tokens.css) and
+is exposed as Tailwind utilities via the `@theme inline` block in
+[`styles/globals.css`](../styles/globals.css). Every one of them is
+rendered live at [`/styleguide`](../app/styleguide/page.tsx) — that page is
+the actual source of truth for "does this token work," not this document.
+
+**The rule, per [CLAUDE.md](../CLAUDE.md):** components compose existing
+tokens (`bg-surface`, `text-h2`, `rounded-lg`, `shadow-glow-accent-md`,
+`ease-out-expo`, ...) and never write an arbitrary value. If a component
+needs a colour, size, or timing that doesn't exist yet, the fix is a new
+token in `tokens.css`, not a one-off literal in the component.
+
+### Why CSS tokens, not `tailwind.config.ts`
+
+The brief asked to "extend `tailwind.config.ts`," but this project is on
+Tailwind v4, which is CSS-first: the `@theme` block *is* the config. A
+`tailwind.config.ts` still works in v4 (loaded via an `@config` directive)
+but exists for things CSS can't express — custom plugins, a `content`
+safelist, JS-computed values — none of which this project needs; v4 also
+auto-detects template files without a `content` array. Adding an empty
+config file just to have one would be dead weight a reader has to figure
+out does nothing, which is worse than not having it. `styles/tokens.css` +
+`styles/globals.css`'s `@theme inline` block together are the Tailwind
+config, and every token was verified end-to-end (computed `font-size`,
+`line-height`, `letter-spacing`, `border-radius`, `box-shadow`, and
+`background-color` all matched their source token exactly) against the
+running dev server while building this phase.
+
+### Token categories
+
+| Category | Tokens | Tailwind utilities |
+| --- | --- | --- |
+| Surfaces | `--color-background/surface/surface-raised/overlay/border/border-strong` | `bg-background`, `bg-surface`, `border-border`, ... |
+| Foreground | `--color-foreground/-secondary/-muted` | `text-foreground`, `text-foreground-secondary`, `text-foreground-muted` |
+| Accent | `--color-accent/-hover/-muted/-foreground` | `bg-accent`, `text-accent`, `bg-accent-hover`, ... |
+| Decorative glow | `--color-glow-cyan/-warm` | `bg-glow-cyan`, `shadow-glow-cyan`, ... |
+| Semantic | `--color-success/warning/danger/info` | `bg-success`, `text-danger`, ... |
+| Typography | `--text-display/h1-h4/body-lg/body/small/caption` (size + line-height + letter-spacing, paired) | `text-display`, `text-h2`, `text-caption`, ... |
+| Font families | `--font-display` (Sora), `--font-body` (Inter) | `font-display`, `font-body` |
+| Radius | `--radius-sm/md/lg/xl/2xl/full` | `rounded-sm` … `rounded-full` |
+| Shadow / glow | `--shadow-sm/md/lg`, `--glow-accent-sm/md/lg`, `--glow-cyan/-warm` | `shadow-sm`, `shadow-glow-accent-md`, ... |
+| Easing | `--ease-out-expo/-out-quart/-in-out-quart/-spring` | `ease-out-expo`, ... (CSS transitions) |
+| Durations | `--duration-instant/fast/base/slow/slower` | not mapped to a Tailwind namespace — see below |
+| Spacing rhythm | `--space-section-y/-y-lg/-container-x` | referenced directly (`style`/arbitrary-property), no dedicated utility |
+| Border width | `--border-width-thin/medium/thick` | `border` (1px) / `border-[length:var(--border-width-medium)]` / `border-2` (2px) |
+
+**Why durations aren't a Tailwind namespace:** Tailwind's `duration-*`
+utilities are a fixed numeric scale (`duration-150`, `duration-300`, ...),
+not a `--duration-*` theme namespace the way `--radius-*`/`--shadow-*` are —
+there's nothing to remap. It doesn't matter in practice: almost all
+animation in this project runs through Framer Motion (`lib/motion.ts`), not
+CSS `transition-duration` utilities, and Framer Motion needs numeric
+seconds in JS anyway (see below).
+
+### Fonts
+
+Loaded via `next/font/google` in `app/layout.tsx`: **Sora** (`--font-sora`,
+mapped to the `--font-display` token) for headings — geometric, heavy at
+high weights, matching the reference's bold uppercase display type — and
+**Inter** (`--font-inter`, mapped to `--font-body`) for body copy. Both use
+the `latin` subset and `display: "swap"` so text renders in a fallback font
+immediately rather than staying invisible while the webfont loads.
+
+### Motion
+
+[`lib/motion.ts`](../lib/motion.ts) exports every reusable variant:
+`fadeInUp`, `fadeIn`, `scaleIn`, `staggerContainer`/`staggerItem`,
+`revealOnScroll`, `hoverLift`/`hoverGlow`, `pageTransition`. Sections import
+these rather than writing their own `transition`/`variants` objects, so the
+whole site shares one motion vocabulary.
+
+Durations and easing curves are re-declared in that file as plain JS
+constants (seconds, and bezier arrays) rather than read from
+`tokens.css`'s custom properties — Framer Motion variants are evaluated as
+plain objects at module load, including during SSR, before any stylesheet
+or DOM exists to read `getComputedStyle` from. The two are kept in sync by
+hand; `lib/motion.ts`'s header comment says so at the point someone would
+edit either one.
+
+**Reduced motion is automatic**, per the brief's requirement that sections
+never handle it themselves:
+[`components/motion/MotionProvider.tsx`](../components/motion/MotionProvider.tsx)
+wraps the app in Framer Motion's own `<MotionConfig reducedMotion="user">`
+(mounted once, in `app/layout.tsx`). When the OS-level `prefers-reduced-motion`
+preference is set, every `motion.*` animation anywhere in the app —
+including every variant above — automatically drops transform-based motion
+(position, scale, rotation) to an instant application and keeps only
+opacity/colour transitions, with zero per-section opt-in.
+
+### `/styleguide`
+
+Renders every token category and a live, replayable demo of every motion
+variant — the brief's own visual QA tool, and also how the token mappings
+above were actually verified rather than assumed. Visible in local dev and
+Vercel preview deployments; 404s (via `notFound()`) when
+`VERCEL_ENV === "production"`, and carries `robots: { index: false, follow:
+false }` regardless, so it never appears in search results even before that
+gate matters.

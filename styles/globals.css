@@ -1,27 +1,121 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/*
+ * Tailwind v4 is CSS-first: this @theme block IS the Tailwind config for
+ * this project (no tailwind.config.ts — see docs/architecture.md's Design
+ * System section for why introducing one would be dead weight in v4). Every
+ * design token above becomes a real utility class here — `bg-surface`,
+ * `text-h2`, `rounded-lg`, `shadow-glow-accent-md`, `ease-out-expo`, etc.
+ * `inline` makes Tailwind read the *values* of these custom properties
+ * (already set in tokens.css) rather than re-declaring them.
+ */
 @theme inline {
+  /* Colours */
   --color-background: var(--color-background);
   --color-surface: var(--color-surface);
   --color-surface-raised: var(--color-surface-raised);
+  --color-overlay: var(--color-overlay);
   --color-border: var(--color-border);
   --color-border-strong: var(--color-border-strong);
+
   --color-foreground: var(--color-foreground);
+  --color-foreground-secondary: var(--color-foreground-secondary);
   --color-foreground-muted: var(--color-foreground-muted);
-  --color-foreground-subtle: var(--color-foreground-subtle);
-  --color-primary: var(--color-primary);
-  --color-primary-hover: var(--color-primary-hover);
-  --color-primary-foreground: var(--color-primary-foreground);
+
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-muted: var(--color-accent-muted);
+  --color-accent-foreground: var(--color-accent-foreground);
+
+  --color-glow-cyan: var(--color-glow-cyan);
+  --color-glow-warm: var(--color-glow-warm);
+
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
   --color-danger: var(--color-danger);
+  --color-info: var(--color-info);
+
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-foreground: var(--color-primary-foreground);
   --color-ring: var(--color-ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  /* Fonts */
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-sans: var(--font-body);
+
+  /* Font size scale — paired line-height + letter-spacing per Tailwind v4's font-size theme shape. */
+  --text-display: var(--text-display-size);
+  --text-display--line-height: var(--text-display-line-height);
+  --text-display--letter-spacing: var(--text-display-tracking);
+
+  --text-h1: var(--text-h1-size);
+  --text-h1--line-height: var(--text-h1-line-height);
+  --text-h1--letter-spacing: var(--text-h1-tracking);
+
+  --text-h2: var(--text-h2-size);
+  --text-h2--line-height: var(--text-h2-line-height);
+  --text-h2--letter-spacing: var(--text-h2-tracking);
+
+  --text-h3: var(--text-h3-size);
+  --text-h3--line-height: var(--text-h3-line-height);
+  --text-h3--letter-spacing: var(--text-h3-tracking);
+
+  --text-h4: var(--text-h4-size);
+  --text-h4--line-height: var(--text-h4-line-height);
+  --text-h4--letter-spacing: var(--text-h4-tracking);
+
+  --text-body-lg: var(--text-body-lg-size);
+  --text-body-lg--line-height: var(--text-body-lg-line-height);
+
+  --text-body: var(--text-body-size);
+  --text-body--line-height: var(--text-body-line-height);
+
+  --text-small: var(--text-small-size);
+  --text-small--line-height: var(--text-small-line-height);
+
+  --text-caption: var(--text-caption-size);
+  --text-caption--line-height: var(--text-caption-line-height);
+  --text-caption--letter-spacing: var(--text-caption-tracking);
+
+  /* Letter spacing (tracking-*) */
+  --tracking-tight: var(--tracking-tight);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: var(--tracking-wide);
+  --tracking-wider: var(--tracking-wider);
+
+  /* Spacing base multiplier — every numeric Tailwind spacing utility (p-4, gap-6, ...) derives from this. */
+  --spacing: var(--spacing);
+
+  /* Radius scale */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+
+  /* Shadow / glow scale */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-glow-accent-sm: var(--glow-accent-sm);
+  --shadow-glow-accent-md: var(--glow-accent-md);
+  --shadow-glow-accent-lg: var(--glow-accent-lg);
+  --shadow-glow-cyan: var(--glow-cyan);
+  --shadow-glow-warm: var(--glow-warm);
+
+  /* Easing curves (ease-*) */
+  --ease-out-expo: var(--ease-out-expo);
+  --ease-out-quart: var(--ease-out-quart);
+  --ease-in-out-quart: var(--ease-in-out-quart);
+  --ease-spring: var(--ease-spring);
 }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  font-family: var(--font-body);
 }
