@@ -2,7 +2,8 @@
 
 > Rendering strategy, auth flow, and a full system diagram are still stubs —
 > to be filled in as later phases add the frontend and admin panel. This file
-> currently covers the security model, since that's what Phase 3 built.
+> currently covers the security model (Phase 3) and the data access layer,
+> including caching (Phase 4).
 
 ## Security
 
@@ -23,10 +24,21 @@ exceptions. The pattern is the same everywhere:
 - A `for all` policy lets the admin do all four operations, gated by
   `is_admin()` (see below).
 - `anon` has no insert/update/delete policy on anything, anywhere. With RLS
-  enabled, no matching policy means the operation is denied — this holds
-  regardless of the coarse `GRANT`s Supabase applies to every project by
-  default (`anon`/`authenticated` get broad table-level DML grants; RLS,
-  not those grants, is the actual boundary).
+  enabled, no matching policy means the operation is denied regardless of
+  the base `GRANT`s below — RLS is what actually decides "which rows,"
+  `GRANT` only decides "this role may attempt this kind of statement at
+  all."
+
+**The base `GRANT`s matter too, and aren't automatic.** New tables in this
+project are *not* granted to `anon`/`authenticated` by the platform — verified
+against a real local Supabase stack, where a freshly created table came back
+with `TRUNCATE`/`REFERENCES`/`TRIGGER`/`MAINTAIN` for those roles but no
+`SELECT`/`INSERT`/`UPDATE`/`DELETE`. Without an explicit `GRANT`, even a
+row a policy would otherwise allow is unreachable ("permission denied for
+table x", not an RLS-shaped empty result). The migration grants `SELECT` to
+`anon`/`authenticated` and `INSERT`/`UPDATE`/`DELETE` to `authenticated` on
+every Phase 2 table, plus an `ALTER DEFAULT PRIVILEGES` so a table added in
+a later migration doesn't quietly repeat this.
 
 Two exceptions to the plain "published rows only" rule:
 
@@ -122,16 +134,17 @@ README for the one-line version. When to use which:
 | Client | Key | Use it for | Subject to RLS? |
 | --- | --- | --- | --- |
 | `client.ts` | anon | Client Components | Yes |
-| `server.ts` | anon + cookie session | Server Components, Server Actions, Route Handlers acting as the current user | Yes |
+| `server.ts` — `createClient()` | anon + cookie session | Server Components, Server Actions, Route Handlers acting as the current user | Yes |
+| `server.ts` — `createStaticClient()` | anon, no cookies | `lib/data`'s public read functions (see [Caching strategy](#caching-strategy) — cookies can't be used inside `unstable_cache`) | Yes |
 | `admin.ts` | service-role | Trusted server-side operations that must bypass RLS | **No** |
 
-`server.ts` should cover almost everything server-side — the current user's
-session (anonymous visitor or the signed-in admin) flows through cookies,
-and RLS enforces the same rules it would over the API. `admin.ts` exists for
-the small set of operations where that's not enough (e.g. an admin action
-gated by application logic rather than a row the current user's session can
-already see). Default to `server.ts`; reach for `admin.ts` deliberately, not
-by habit.
+`createClient()` should cover almost everything else server-side — the
+current user's session (anonymous visitor or the signed-in admin) flows
+through cookies, and RLS enforces the same rules it would over the API.
+`admin.ts` exists for the small set of operations where that's not enough
+(e.g. an admin action gated by application logic rather than a row the
+current user's session can already see). Default to `createClient()`; reach
+for `admin.ts` deliberately, not by habit.
 
 **Why the service-role key never reaches the browser:** it bypasses RLS
 entirely — anyone holding it can read or write any row in any table,
@@ -181,6 +194,126 @@ environment, including production:
 psql "<connection-string>" -v ON_ERROR_STOP=1 -f tests/database/rls-check.sql
 ```
 
-It was run against a disposable Postgres container (with `auth`/`storage`
-schemas and `anon`/`authenticated` roles reconstructed to match a real
-Supabase project) while writing this migration, and every assertion passed.
+It was first run against a disposable Postgres container (with `auth`/`storage`
+schemas and `anon`/`authenticated` roles reconstructed by hand to match a
+real Supabase project) while writing this migration, and every assertion
+passed — but that hand-built harness turned out to be more permissive than
+reality: it granted `anon`/`authenticated` broad table privileges
+up front, matching an assumption about Supabase's default behavior that
+turned out to be wrong (see [Base privilege
+grants](#the-rls-model)). Re-run in Phase 4 against a genuine local Supabase
+stack (`supabase start`), it surfaced two real bugs the hand-built harness
+had been masking:
+
+1. `alter table storage.objects enable row level security` fails on real
+   Supabase with "must be owner of table objects" — that table is owned by
+   `supabase_storage_admin`, not the migration role. Fixed by wrapping it in
+   a `do` block that catches `insufficient_privilege` and no-ops (it only
+   needs to actually run on a bare local Postgres instance that doesn't
+   already have RLS on).
+2. New tables are *not* automatically granted to `anon`/`authenticated` —
+   fixed by adding the explicit `GRANT`s described above.
+
+Both were fixed directly in this migration file rather than as follow-up
+migrations, since neither bug had been applied to any real environment yet
+(no live Supabase project existed at the time) — see
+[CLAUDE.md](../CLAUDE.md) on migrations being the source of truth; there was
+no drift to reconcile, just incorrect SQL to correct before it ever ran
+anywhere that mattered. After both fixes, `supabase db reset` + the same
+proof script passed cleanly against the real stack.
+
+## Data access layer
+
+Three layers, each with one job:
+
+1. **`types/database.ts`** — generated by the Supabase CLI from the schema.
+   Exact, exhaustive, never hand-edited, never imported outside `types/`.
+2. **`types/content.ts`** — hand-authored domain types (`Project`,
+   `ProjectDetail`, `SkillWithCategory`, ...) derived from `database.ts` via
+   `Pick`, matching exactly what each `lib/data` function selects. Every
+   component and `lib/data` module imports from here.
+3. **`lib/validation/`** — one Zod schema per entity, matching `content.ts`'s
+   shapes. The single source of truth for both admin form validation and
+   server-side validation once the admin panel exists — a schema is
+   defined once and used on both sides of that boundary.
+
+`lib/data/` sits on top of all three: one module per entity, each exporting
+plain async functions that use `createStaticClient()`, select only the
+columns `content.ts` promises, filter to published content, order by
+`display_order` then a sensible tiebreaker (e.g. most recent `start_date`
+first), and return a typed result. A failed query is caught, logged
+server-side via `console.error`, and turned into `null`/`[]` rather than
+thrown — a public page should render with a section missing, never crash,
+if Supabase is briefly unreachable.
+
+`getProjectBySlug()` fetches the project plus its technologies, features,
+and media in a single PostgREST request using embedded resources
+(`project_technologies(...)`, `project_features(...)`, `project_media(...)`
+inside one `.select()`) — one SQL query with joins server-side, not four
+round trips.
+
+Each module exports two functions: `fetchX` (the raw query) and `getX`
+(`fetchX` wrapped in `unstable_cache` — see [Caching
+strategy](#caching-strategy)). Components and pages only ever call `getX`;
+`fetchX` is exported solely so [`tests/lib/data/smoke.ts`](#proving-the-data-layer-works)
+can exercise the real query logic outside a full Next.js server runtime,
+which `unstable_cache` requires and a standalone script isn't.
+
+### Caching strategy
+
+Every `lib/data` function is wrapped in `unstable_cache` (`next/cache`) with
+two things attached:
+
+- **`revalidate: 3600`** — a one-hour time-based fallback. This is a
+  portfolio site; content changes rarely, so staleness up to an hour is a
+  non-issue on its own.
+- **A tag from `CACHE_TAGS`** (`lib/constants.ts`) — one tag per entity
+  (`"projects"`, `"skills"`, ...), so a change to one entity never
+  invalidates unrelated cached data.
+
+`unstable_cache` (not route-level `fetch` caching) is the right tool here
+because the data source is the Supabase client, not a raw `fetch` call the
+Next.js cache can intercept on its own — `unstable_cache` caches whatever
+the wrapped function returns, regardless of how it got there. It does
+forbid dynamic APIs like `cookies()` inside the wrapped function, which is
+exactly why `lib/data` uses `createStaticClient()` (no cookies) rather than
+`server.ts`'s cookie-aware `createClient()` — public reads don't need
+session awareness anyway, since they only ever return published content no
+matter who's asking.
+
+**How the admin panel invalidates this (future phase):** every write the
+admin panel makes is a publish/unpublish/edit of some entity. After that
+write succeeds, the server action calls `revalidateTag(CACHE_TAGS.<entity>)`
+for the entity that changed, which immediately invalidates every cache
+entry tagged with it — the next request to any `lib/data` function for that
+entity re-queries Supabase instead of serving the stale hour-old result. The
+one-hour `revalidate` is purely a safety net for content that changed
+through some path that forgot to call `revalidateTag` (there shouldn't be
+one, but the fallback costs nothing); tag-based invalidation is what makes a
+publish feel instant.
+
+### Proving the data layer works
+
+[`tests/lib/data/smoke.ts`](../tests/lib/data/smoke.ts) calls every
+`fetchX` function and prints what came back — shape, and a preview of the
+actual value — so a broken query, a wrong column name, or an empty result is
+obvious before any page exists to notice it. Run it with:
+
+```bash
+npx supabase start
+npx supabase status -o env   # copy API_URL → NEXT_PUBLIC_SUPABASE_URL, anon key → NEXT_PUBLIC_SUPABASE_ANON_KEY
+npm run smoke:data
+```
+
+Run against a real local Supabase stack (`supabase start`, not a bare
+Postgres container — this needs actual PostgREST, since the data layer
+talks to Supabase over its REST API, not a Postgres wire connection) with
+migrations and `supabase/seed.sql` applied, every function returned real
+seeded data with the expected shape and nothing threw. Getting there
+surfaced the same two migration bugs documented in [Proving it
+works](#proving-it-works) — `fetchProfile()` and the rest came back
+`permission denied for table x` until the missing `GRANT`s were added — plus
+one testability gap: `unstable_cache` (used by every `getX`) throws
+`Invariant: incrementalCache missing` outside a full Next.js server runtime,
+which is exactly why this script calls the unwrapped `fetchX` functions
+instead of `getX`.

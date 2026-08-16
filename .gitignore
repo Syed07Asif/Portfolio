@@ -50,3 +50,8 @@ next-env.d.ts
 
 # local media (uploaded content should live in Supabase Storage, not the repo)
 /public/uploads
+
+# Supabase CLI local dev state (created by `supabase start`/`db reset`)
+supabase/.branches
+supabase/.temp
+supabase/snippets

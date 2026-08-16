@@ -176,6 +176,59 @@ from public.site_settings;
 grant select on public.public_site_settings to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
+-- Base privilege grants
+-- ---------------------------------------------------------------------------
+-- RLS policies only take effect once a role has the underlying SQL
+-- privilege to attempt the operation at all — GRANT and RLS are two
+-- separate layers, and new tables here are NOT automatically granted to
+-- anon/authenticated (verified against a real local Supabase stack: by
+-- default they get TRUNCATE/REFERENCES/TRIGGER/MAINTAIN, not
+-- SELECT/INSERT/UPDATE/DELETE), so every table needs this explicitly. RLS
+-- above remains the real access boundary — anon gets SELECT on
+-- site_settings here too, but still sees zero rows there since no anon
+-- policy exists on that table.
+
+grant select on
+  public.profile,
+  public.skill_categories,
+  public.skills,
+  public.experience,
+  public.education,
+  public.projects,
+  public.project_technologies,
+  public.project_features,
+  public.project_media,
+  public.certifications,
+  public.achievements,
+  public.blog_posts,
+  public.contact_links,
+  public.resumes,
+  public.site_settings
+to anon, authenticated;
+
+grant insert, update, delete on
+  public.profile,
+  public.skill_categories,
+  public.skills,
+  public.experience,
+  public.education,
+  public.projects,
+  public.project_technologies,
+  public.project_features,
+  public.project_media,
+  public.certifications,
+  public.achievements,
+  public.blog_posts,
+  public.contact_links,
+  public.resumes,
+  public.site_settings
+to authenticated;
+
+-- So a future table added in a later migration doesn't silently repeat this.
+alter default privileges in schema public grant select on tables to anon, authenticated;
+alter default privileges in schema public grant insert, update, delete on tables to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Storage buckets
 -- ---------------------------------------------------------------------------
 -- One bucket per content area, all public-read (served straight from the
@@ -210,11 +263,21 @@ on conflict (id) do update set
 -- ---------------------------------------------------------------------------
 -- Same public-read / admin-write rule as the content tables, applied once
 -- across all eight buckets rather than repeated per bucket. RLS on
--- storage.objects is enabled by default on every Supabase project; the
--- ALTER below is a no-op there and only matters for local/self-hosted
--- Postgres instances that don't already have it on.
-
-alter table storage.objects enable row level security;
+-- storage.objects is enabled by default on every real Supabase project
+-- (owned by supabase_storage_admin, not the migration role), so attempting
+-- the ALTER there fails with "must be owner of table objects" — caught and
+-- ignored below. It only actually runs on local/self-hosted Postgres
+-- instances (e.g. a bare postgres:16 container) where the migration role
+-- does own the table and RLS isn't on yet.
+do $$
+begin
+  begin
+    alter table storage.objects enable row level security;
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+end $$;
 
 create policy portfolio_buckets_public_read on storage.objects
   for select to anon, authenticated

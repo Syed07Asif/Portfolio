@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 
 /**
  * Service-role client — bypasses Row Level Security entirely. The
@@ -10,7 +11,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
  * should go through server.ts or client.ts so RLS still applies.
  */
 export function createAdminClient() {
-  return createSupabaseClient(
+  return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {

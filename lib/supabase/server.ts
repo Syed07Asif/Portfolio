@@ -1,5 +1,7 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/types/database";
 
 /**
  * Server Component / Server Action / Route Handler client — anon key, with
@@ -10,7 +12,7 @@ import { createServerClient } from "@supabase/ssr";
 export async function createClient() {
   const cookieStore = await cookies();
 
-  return createServerClient(
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -31,5 +33,22 @@ export async function createClient() {
         },
       },
     },
+  );
+}
+
+/**
+ * Stateless anon-key client for public content reads — no cookies, so it's
+ * safe to call from inside `unstable_cache` (which forbids dynamic APIs like
+ * `cookies()`) and doesn't force whatever page calls it into per-request
+ * dynamic rendering. RLS still applies, exactly as it would for a
+ * signed-out visitor: only published content is visible either way, so
+ * public read functions don't need session/cookie awareness at all. Used by
+ * lib/data — see docs/architecture.md's Caching section.
+ */
+export function createStaticClient() {
+  return createSupabaseClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { auth: { persistSession: false } },
   );
 }

@@ -149,15 +149,28 @@ begin
       raise notice 'PASS: anon INSERT correctly rejected';
   end;
 
-  update public.skills set name = 'Hacked' where id = 'a0000000-0000-4000-8000-000000000002';
-  if found then
-    raise exception 'FAIL: anon was able to UPDATE a published skill';
-  end if;
+  -- anon has no base UPDATE/DELETE grant at all, so these raise
+  -- insufficient_privilege before RLS even gets a say — a stricter outcome
+  -- than "0 rows affected," and just as much a pass.
+  begin
+    update public.skills set name = 'Hacked' where id = 'a0000000-0000-4000-8000-000000000002';
+    if found then
+      raise exception 'FAIL: anon was able to UPDATE a published skill';
+    end if;
+  exception
+    when insufficient_privilege then
+      null;
+  end;
 
-  delete from public.skills where id = 'a0000000-0000-4000-8000-000000000002';
-  if found then
-    raise exception 'FAIL: anon was able to DELETE a published skill';
-  end if;
+  begin
+    delete from public.skills where id = 'a0000000-0000-4000-8000-000000000002';
+    if found then
+      raise exception 'FAIL: anon was able to DELETE a published skill';
+    end if;
+  exception
+    when insufficient_privilege then
+      null;
+  end;
 
   raise notice 'PASS: anon cannot UPDATE or DELETE either';
 end $$;
