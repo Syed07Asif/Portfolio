@@ -13,88 +13,67 @@
   }
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 100);
-  camera.position.z = 13;
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+  camera.position.z = 14;
 
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   container.appendChild(renderer.domElement);
 
-  // ---- Network sphere (nodes) ----
-  const NODE_COUNT = 160;
-  const RADIUS = 5.2;
-  const nodePositions = [];
-  for (let i = 0; i < NODE_COUNT; i++) {
-    // Fibonacci sphere distribution for even spacing
-    const y = 1 - (i / (NODE_COUNT - 1)) * 2;
-    const r = Math.sqrt(1 - y * y);
-    const theta = Math.PI * (1 + Math.sqrt(5)) * i;
-    const x = Math.cos(theta) * r;
-    const z = Math.sin(theta) * r;
-    const jitter = 0.9 + Math.random() * 0.2;
-    nodePositions.push(x * RADIUS * jitter, y * RADIUS * jitter, z * RADIUS * jitter);
-  }
+  // Shape sits offset to the right so it reads alongside the left-aligned text
+  const rig = new THREE.Group();
+  rig.position.x = 3.4;
+  scene.add(rig);
 
-  const nodeGeometry = new THREE.BufferGeometry();
-  nodeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(nodePositions, 3));
-  const nodeMaterial = new THREE.PointsMaterial({
-    color: accent,
-    size: 0.11,
-    transparent: true,
-    opacity: 0.95,
-    sizeAttenuation: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  });
-  const points = new THREE.Points(nodeGeometry, nodeMaterial);
+  // ---- Outer crystal: wireframe icosahedron ----
+  const outerGeo = new THREE.IcosahedronGeometry(3.1, 0);
+  const outerEdges = new THREE.EdgesGeometry(outerGeo);
+  const outerLines = new THREE.LineSegments(
+    outerEdges,
+    new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.85 })
+  );
+  const outerFill = new THREE.Mesh(
+    outerGeo,
+    new THREE.MeshBasicMaterial({
+      color: accent,
+      transparent: true,
+      opacity: 0.035,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+  );
+  const outer = new THREE.Group();
+  outer.add(outerFill, outerLines);
+  rig.add(outer);
 
-  // ---- Connections between nearby nodes ----
-  const linePositions = [];
-  const MAX_DIST = 2.3;
-  for (let i = 0; i < NODE_COUNT; i++) {
-    const ix = nodePositions[i * 3], iy = nodePositions[i * 3 + 1], iz = nodePositions[i * 3 + 2];
-    for (let j = i + 1; j < NODE_COUNT; j++) {
-      const jx = nodePositions[j * 3], jy = nodePositions[j * 3 + 1], jz = nodePositions[j * 3 + 2];
-      const d = Math.hypot(ix - jx, iy - jy, iz - jz);
-      if (d < MAX_DIST) {
-        linePositions.push(ix, iy, iz, jx, jy, jz);
-      }
-    }
-  }
-  const lineGeometry = new THREE.BufferGeometry();
-  lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
-  const lineMaterial = new THREE.LineBasicMaterial({
-    color: accent,
-    transparent: true,
-    opacity: 0.12,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  });
-  const lines = new THREE.LineSegments(lineGeometry, lineMaterial);
-
-  const network = new THREE.Group();
-  network.add(points, lines);
-  scene.add(network);
+  // ---- Inner crystal: smaller, counter-rotating for depth ----
+  const innerGeo = new THREE.IcosahedronGeometry(1.55, 0);
+  const innerEdges = new THREE.EdgesGeometry(innerGeo);
+  const innerLines = new THREE.LineSegments(
+    innerEdges,
+    new THREE.LineBasicMaterial({ color: 0x9fc1ff, transparent: true, opacity: 0.55 })
+  );
+  rig.add(innerLines);
 
   // ---- Sparse distant starfield for depth ----
-  const STAR_COUNT = 220;
+  const STAR_COUNT = 180;
   const starPositions = [];
   for (let i = 0; i < STAR_COUNT; i++) {
     starPositions.push(
       (Math.random() - 0.5) * 40,
       (Math.random() - 0.5) * 40,
-      (Math.random() - 0.5) * 40 - 10
+      (Math.random() - 0.5) * 30 - 8
     );
   }
   const starGeometry = new THREE.BufferGeometry();
   starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-  const starMaterial = new THREE.PointsMaterial({
+  const stars = new THREE.Points(starGeometry, new THREE.PointsMaterial({
     color: 0x8fb4ff,
-    size: 0.045,
+    size: 0.04,
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.4,
     sizeAttenuation: true
-  });
-  const stars = new THREE.Points(starGeometry, starMaterial);
+  }));
   scene.add(stars);
 
   // ---- Sizing ----
@@ -104,17 +83,23 @@
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
+
+    // On narrow screens, bring the shape back toward center and shrink the offset
+    const narrow = w < 820;
+    rig.position.x = narrow ? 0 : 3.4;
+    const scale = narrow ? Math.max(0.55, w / 820) : 1;
+    rig.scale.setScalar(scale);
   }
   resize();
   window.addEventListener('resize', resize);
 
-  // ---- Mouse parallax (drives the camera, independent of the auto-rotation) ----
+  // ---- Mouse parallax (camera-driven, independent of auto-rotation) ----
   let targetCamX = 0, targetCamY = 0;
   window.addEventListener('mousemove', (e) => {
     const nx = (e.clientX / window.innerWidth) * 2 - 1;
     const ny = (e.clientY / window.innerHeight) * 2 - 1;
-    targetCamX = nx * 1.4;
-    targetCamY = ny * 0.8;
+    targetCamX = nx * 0.9;
+    targetCamY = ny * 0.5;
   });
 
   // ---- Render loop ----
@@ -129,14 +114,16 @@
     requestAnimationFrame(animate);
 
     if (!prefersReducedMotion) {
-      network.rotation.y += 0.0012;
-      network.rotation.x += 0.0003;
+      outer.rotation.y += 0.0022;
+      outer.rotation.x += 0.0009;
+      innerLines.rotation.y -= 0.0035;
+      innerLines.rotation.x -= 0.0014;
       stars.rotation.y += 0.0002;
     }
 
     camera.position.x += (targetCamX - camera.position.x) * 0.03;
     camera.position.y += (-targetCamY - camera.position.y) * 0.03;
-    camera.lookAt(scene.position);
+    camera.lookAt(rig.position.x * 0.3, 0, 0);
 
     renderer.render(scene, camera);
   }

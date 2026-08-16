@@ -15,8 +15,6 @@ function renderHero(data) {
   document.getElementById('heroName').textContent = basicInfo.name;
   document.getElementById('heroTitle').textContent = basicInfo.title;
   document.getElementById('heroBio').textContent = basicInfo.shortBio;
-  document.getElementById('heroPhoto').src = basicInfo.photo;
-  document.getElementById('heroPhoto').alt = basicInfo.name;
 
   const social = document.getElementById('socialLinks');
   social.innerHTML = `
@@ -31,6 +29,9 @@ function renderAbout(data) {
   document.getElementById('aboutText').textContent = basicInfo.aboutMe;
   document.getElementById('aboutLocation').textContent = `📍 ${basicInfo.location}`;
   document.getElementById('aboutNationality').textContent = `🌏 ${basicInfo.nationality}`;
+  const photo = document.getElementById('aboutPhoto');
+  photo.src = basicInfo.photo;
+  photo.alt = basicInfo.name;
 }
 
 function renderSkills(data) {
