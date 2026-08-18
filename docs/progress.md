@@ -21,7 +21,7 @@ behind a specific phase if this summary isn't enough.
 
 ## Where things stand
 
-**Phases 1–18 are done and verified.** Phase 18 ("shared admin
+**Phases 1–19 are done and verified.** Phase 18 ("shared admin
 infrastructure") had one earlier, failed attempt — removed entirely and
 rebuilt from scratch in a second attempt, which succeeded. All six
 required operations (create, edit, publish, unpublish, delete, reorder)
@@ -33,6 +33,12 @@ way, is in this file's Phase 18 log entry below and in
 [docs/content-management.md](./content-management.md)'s "Two real bugs"
 section. Test rows created during verification were cleaned up afterward
 (`education` table is back to exactly `supabase/seed.sql`'s one row).
+**Phase 19** (Profile, Skills, Experience admin modules) is done and
+verified the same way — full narrative in this file's Phase 19 log entry
+below and in content-management.md's "Two more real bugs" section; every
+table involved (`profile`, `skill_categories`, `skills`, `experience`) is
+back to exactly `supabase/seed.sql`'s original content after test-row
+cleanup.
 
 - **Branch:** `develop` (all phase work happens here; `main` is still just
   the Phase 1 scaffold — nothing has been merged up yet). Tracks
@@ -1150,6 +1156,134 @@ verification were deleted afterward and `Example University`'s
 revalidate` route (same pattern Phase 14/15 established) busted the
 public-site cache after that direct-SQL cleanup, then was deleted.
 
+**Phase 19 — Profile, Skills, and Experience admin modules (done, verified
+live).** The first three real content editors built on top of Phase 18's
+proven infrastructure — per that phase's own goal, each was "mostly
+configuration," but building and live-testing all three still surfaced
+two genuine, previously-latent bugs (both written up in
+[docs/content-management.md](./content-management.md#two-more-real-bugs-found-live-while-building-phase-19)
+in full) and required three small, generic, backward-compatible additions
+to the shared components themselves (also documented there, under "Phase
+19 additions to shared infrastructure"): `AdminTable` gained optional
+`onTogglePublished` (omit for an entity with no publish concept) and
+`onRequestDelete` (an escape hatch for a delete flow needing more than a
+yes/no confirmation); `NumberField` gained `allowEmpty` (a cleared input
+commits `null`, not `0`); `TextareaField` gained `maxLength` (a live
+character-count caption).
+
+**Profile** (`app/admin/(protected)/profile/`, `components/admin/profile/
+ProfileForm.tsx`) is a single-record upsert, not a list — `profile` is a
+singleton table (`is_singleton boolean unique`), so there's no create/edit
+page pair, no delete, no publish toggle, just one form always showing
+whatever the singleton row currently holds (or blank, the very first
+time). `lib/actions/profile.ts`'s one action, `upsertProfile`, upserts on
+the `is_singleton` unique column — the same action handles "no row yet"
+and "editing the existing row." Every field's `description` text states
+exactly where it renders on the public site (sourced from actually
+reading `Hero.tsx`/`About.tsx`, not guessed), and `short_bio`/`long_bio`
+use the new `TextareaField` `maxLength` prop for the brief's "live
+character count" requirement.
+
+**Skills** (`app/admin/(protected)/skills/`, `components/admin/skills/`)
+is two related entities sharing one screen, per the brief: a
+`SkillCategoryTable` (categories: create/edit/reorder/delete-with-choice)
+followed by one `SkillCategorySection` per category (that category's own
+skills: a quick-add textarea + the standard skill `AdminTable`). **The
+delete-with-choice requirement was the one genuinely new UI pattern this
+phase needed**: `skills.category_id references skill_categories(id) on
+delete restrict`, so deleting a category that still has skills can't just
+cascade or silently orphan — `SkillCategoryTable` intercepts the delete
+via `AdminTable`'s new `onRequestDelete` prop and shows its own
+`AlertDialog` with two radio options (delete the skills too, or move them
+to another category first, picked via a `Select`), Delete disabled until
+a category with skills actually gets one of the two chosen. Verified
+**both** strategies live, not just one: a throwaway category with 1 skill
+deleted via "move" (skill's `category_id` updated, confirmed in Postgres),
+a second throwaway category with 2 skills deleted via "delete-skills"
+(both skill rows gone, confirmed in Postgres). **Bulk-add**
+(`BulkSkillAdd.tsx`, the brief's "add several skills without a full page
+reload per skill" requirement) is a plain textarea (one name per line) +
+`createSkillsBulk` — one array `insert()` of N rows, `display_order`
+continuing from the category's existing skill count, all landing
+unpublished — verified live with a 2-line paste producing "2 skills ready
+to add" → both rows in Postgres with the right `display_order`. Skill
+`proficiency` (optional 0–100) is the first field in this codebase to
+need `NumberField`'s new `allowEmpty` — verified by clearing it back to
+blank and confirming Postgres stored `null`, not `0`.
+
+**Experience** (`app/admin/(protected)/experience/`,
+`components/admin/experience/ExperienceForm.tsx`) is the closest match to
+Education's own six-action shape (no `duplicateExperience` — not asked
+for in the brief, so not built, per CLAUDE.md's "don't scaffold ahead of
+phase"). Two rules the brief specifically asked for, both verified live:
+**turning on "Current role" clears and disables End date** (adjusted
+during render comparing against a mirrored previous `is_current` value —
+the same setState-in-effect-avoidance pattern `AdminTable`/`SlugField`/
+`LoginForm` already use elsewhere in this codebase — confirmed via
+`el.disabled`/`el.value` directly on the DOM, not just visually), and
+**end_date can't be before start_date** (a second `.refine()` chained
+onto `experienceSchema`'s existing one in `lib/validation/experience.ts`
+— tried submitting a 2023 end date against a 2024 start date, got "End
+date can't be before the start date" inline, not a raw Postgres error).
+The **computed duration preview** reuses `lib/utils.ts`'s existing
+`formatDuration()` unmodified (`components/sections/Experience.tsx`'s
+timeline already calls it) — watches `start_date`/`end_date`/`is_current`
+live and renders "Duration shown on the public site: 2 yrs 7 mos" as the
+admin types, confirmed the number actually changes when toggling Current
+role on.
+
+**Two real bugs, found live and fixed** (full writeup in
+[docs/content-management.md](./content-management.md#two-more-real-bugs-found-live-while-building-phase-19)):
+(1) `optionalUrlSchema` (Phase 4) requires an absolute URL, but
+`supabase/seed.sql` seeds every logo/avatar column with a placeholder
+root-relative path (`/images/avatar.jpg`) — since no real asset pipeline
+exists yet — which meant saving Profile, or editing the pre-existing
+seeded Education row, failed validation on a field the admin never
+touched. Fixed with a new `optionalImageUrlSchema`
+(`lib/validation/shared.ts`) accepting either an absolute URL or a
+root-relative path, swapped into `profile.avatar_url`,
+`experience.company_logo_url`, and retroactively into
+`education.institution_logo_url` — confirmed by saving the untouched
+seeded Education row before (failed) and after (succeeded) the fix. (2)
+`revalidateSkills()`, needed by both `lib/actions/skillCategories.ts` and
+`lib/actions/skills.ts`, was first written as a plain sync function
+`export`ed from the former — but Next requires every function exported
+from a `"use server"` file to itself be an async Server Action, so
+`/admin/skills` 500'd immediately ("Server Actions must be async
+functions"). Fixed by moving it into a new plain module,
+`lib/actions/skillsShared.ts` (no `"use server"` directive, same as
+`lib/actions/shared.ts`), imported by both action files.
+
+**Verified live end-to-end against the real local Supabase stack**, same
+standard as every prior phase: Profile's full save round-trip (edited
+`tagline`, confirmed in Postgres, confirmed on the public homepage,
+reverted); Skills' bulk-add, both category-delete strategies, a full
+skill edit (proficiency + publish), and the public site reflecting a
+newly-published skill, all with throwaway categories/skills
+(`ZZ Category A`/`B`, `ZZ Skill *`) created and then fully deleted
+afterward (`docker exec ... psql`), restoring `skill_categories`/`skills`
+to exactly `supabase/seed.sql`'s one category/one skill; Experience's
+create → validation error → is_current fix → duration preview → publish
+→ public-site confirmation → delete cycle, restoring `experience` to
+exactly its one seeded row. A throwaway `/api/debug-revalidate-skills`
+route (same established pattern) busted the public cache after each
+direct-SQL cleanup, then was deleted.
+
+**One environment issue hit and resolved, not an application bug**: the
+Browser pane tab had never been displayed this session, so
+`document.visibilityState` was `"hidden"` — this didn't just block
+screenshots (the already-documented symptom from Phase 18) but stalled
+React's *hydration* of anything behind a Suspense boundary specifically,
+confirmed by checking `__reactProps$` keys directly: the root layout's
+sidebar toggle had them, but a `<Switch>` deep inside `/admin/education`'s
+already-shipped, already-verified `AdminTable` did not, in the same tab,
+proving it wasn't new Phase 19 code. Bulk-add's textarea and every
+publish-toggle Switch were unclickable/inert until the user actually
+displayed the pane, after which hydration completed immediately and every
+interaction worked normally. Worth checking `__reactProps$` presence
+first the next time something inside a Suspense boundary seems
+inexplicably inert, rather than assuming new code broke it.
+
 ## Recurring lessons worth not re-learning
 
 - **Verify against the real thing, not a simulated harness.** Phase 3's
@@ -1237,6 +1371,30 @@ public-site cache after that direct-SQL cleanup, then was deleted.
   opening the pane themselves — say so plainly rather than report a
   fabricated or proxy number (`domContentLoadedEventEnd`/`loadEventEnd` are
   not LCP and shouldn't be presented as if they were).
+- **Same root cause, a fourth symptom: React never finishes *hydrating*
+  content behind a Suspense boundary while the tab stays hidden** — not
+  just paint/RAF/lazy-image loading. Phase 19 hit this hard on
+  `/admin/skills`: a bulk-add textarea and every `AdminTable` publish
+  Switch were completely inert (typed text updated the raw DOM `.value`
+  but React's own `draft` state never budged, so a button reading
+  `names.length` stayed stuck at "Add  skills" with an empty count no
+  matter what). Confirmed this wasn't new Phase 19 code by checking for
+  `__reactProps$` keys directly on the DOM: the root layout's sidebar
+  toggle (hydrated synchronously, outside any Suspense boundary) had one;
+  a `<Switch>` inside `/admin/education`'s already-shipped, already-Phase-
+  18-verified `AdminTable` did not, in the same tab — proving the whole
+  class of "streamed-in, Suspense-boundary content" was un-hydrated, not
+  something this phase broke. Manually dispatching native `input`/`change`
+  events (the classic React-testing workaround) did **not** fix it either
+  — hydration itself was stalled, not just the specific event path. The
+  only fix was asking the user to actually display the Browser pane; once
+  `document.visibilityState` flipped to `"visible"`, hydration completed
+  immediately and every control worked normally on the very next
+  interaction. Check `__reactProps$` presence on a plain, already-working
+  control (or on the exact element that seems inert) before spending time
+  debugging "new" component code — if a component from an earlier,
+  already-verified phase shows the same missing-props symptom in the same
+  tab, it's this, not a regression.
 - **Same root cause, a third symptom: default (lazy) `next/image` loads can
   sit for several seconds with zero network request recorded** in this
   hidden/non-composited tab — Phase 9 hit this verifying `AboutPortrait`'s
@@ -1285,20 +1443,20 @@ public-site cache after that direct-SQL cleanup, then was deleted.
 
 **The public site is done** (`app/(site)/`, Phases 1–16), **admin
 authentication + the protected shell are done** (`app/admin/`, Phase 17),
-and **the shared admin infrastructure is done and proven** (Phase 18) —
-`AdminTable`, `AdminForm` + its nine field components, `ImageUploader`/
-`MultiImageUploader`, `lib/actions/` Server Action machinery, and
-Education wired all the way through as the proof entity, with all six
-CRUD-plus-publish operations verified live. Every sidebar destination
-other than Dashboard and Education (`app/admin/(protected)/profile/`,
-`skills/`, `experience/`, `projects/`, `certifications/`, `achievements/`,
-`blog/`, `resume/`, `settings/`) is still a `ComingSoon` placeholder page
-— real per CLAUDE.md's "build the seam, not the feature" precedent, not
-an oversight; Phase 18's whole point was proving the infrastructure with
-*one* entity before wiring the rest.
+**the shared admin infrastructure is done and proven** (Phase 18), and
+**Profile, Skills, and Experience are wired up and verified live**
+(Phase 19) — `AdminTable`, `AdminForm` + its nine field components,
+`ImageUploader`/`MultiImageUploader`, `lib/actions/` Server Action
+machinery, and now four entities (Education, Profile, Skills, Experience)
+proven end to end. Every sidebar destination other than Dashboard,
+Profile, Skills, Experience, and Education (`app/admin/(protected)/
+projects/`, `certifications/`, `achievements/`, `blog/`, `resume/`,
+`settings/`) is still a `ComingSoon` placeholder page — real per
+CLAUDE.md's "build the seam, not the feature" precedent, not an
+oversight.
 
 What's left:
-- **The remaining content editors (Phase 19+)** — repeat Phase 18's
+- **The remaining content editors (Phase 20+)** — repeat the same
   five-step pattern (documented in
   [docs/content-management.md](./content-management.md#the-shape-of-an-entity-module))
   once per entity: admin read functions in `lib/data/<entity>.ts`,
@@ -1306,14 +1464,16 @@ What's left:
   route files. Every entity already has a Zod schema in `lib/validation/`
   (Phase 4) and shadcn primitives are already installed (Phase 6) — this
   really should be "mostly configuration," per the brief, since the
-  machinery itself is proven. **Projects is the natural next one**: it's
-  the first entity that will actually exercise `SlugField`'s live
-  duplicate-check and `RepeatableGroupField` (project features) for real,
-  both currently built but unproven end-to-end (see
-  docs/content-management.md's "Known gaps"); it also has child tables
-  (`project_technologies`, `project_features`, `project_media`) and a
-  gallery field, which will exercise `MultiImageUploader` for the first
-  time and need `revalidatePath` calls at three places (`/`, `/projects`,
+  machinery itself is proven (four entities in now, across two different
+  phases, with only small additive extensions needed — see Phase 19's log
+  entry). **Projects is still the natural next one**: it's the first
+  entity that will actually exercise `SlugField`'s live duplicate-check
+  and `RepeatableGroupField` (project features) for real, both currently
+  built but unproven end-to-end (see docs/content-management.md's "Known
+  gaps"); it also has child tables (`project_technologies`,
+  `project_features`, `project_media`) and a gallery field, which will
+  exercise `MultiImageUploader` for the first time and need
+  `revalidatePath` calls at three places (`/`, `/projects`,
   `/projects/[slug]`) per docs/architecture.md's Per-route revalidation
   section.
 - **Provisioning a real hosted Supabase project** — still only a local

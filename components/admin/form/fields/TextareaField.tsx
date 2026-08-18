@@ -25,6 +25,8 @@ export interface TextareaFieldProps<TValues extends FieldValues> {
    * difference.
    */
   markdown?: boolean;
+  /** When set, renders a live "{count}/{maxLength}" caption and caps the native input — any bio/description field can opt in, not just Profile's. */
+  maxLength?: number;
 }
 
 export function TextareaField<TValues extends FieldValues>({
@@ -36,30 +38,42 @@ export function TextareaField<TValues extends FieldValues>({
   rows = 4,
   disabled,
   markdown,
+  maxLength,
 }: TextareaFieldProps<TValues>) {
   return (
     <FormField
       control={control}
       name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Textarea
-              {...field}
-              value={(field.value as string | null | undefined) ?? ""}
-              rows={rows}
-              placeholder={placeholder}
-              disabled={disabled}
-              className={cn(markdown && "font-mono text-sm")}
-            />
-          </FormControl>
-          {markdown || description ? (
-            <FormDescription>{markdown ? "Markdown supported." : description}</FormDescription>
-          ) : null}
-          <FormMessage />
-        </FormItem>
-      )}
+      render={({ field }) => {
+        const value = (field.value as string | null | undefined) ?? "";
+        return (
+          <FormItem>
+            <div className="flex items-baseline justify-between gap-2">
+              <FormLabel>{label}</FormLabel>
+              {maxLength ? (
+                <span className="text-caption text-foreground-muted">
+                  {value.length}/{maxLength}
+                </span>
+              ) : null}
+            </div>
+            <FormControl>
+              <Textarea
+                {...field}
+                value={value}
+                rows={rows}
+                placeholder={placeholder}
+                disabled={disabled}
+                maxLength={maxLength}
+                className={cn(markdown && "font-mono text-sm")}
+              />
+            </FormControl>
+            {markdown || description ? (
+              <FormDescription>{markdown ? "Markdown supported." : description}</FormDescription>
+            ) : null}
+            <FormMessage />
+          </FormItem>
+        );
+      }}
     />
   );
 }

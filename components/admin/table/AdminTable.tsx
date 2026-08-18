@@ -44,7 +44,8 @@ import {
 export interface AdminTableItem {
   id: string;
   display_order: number;
-  published: boolean;
+  /** Omit entirely for entities with no publish/draft concept (e.g. skill categories) — see AdminTableProps.onTogglePublished. */
+  published?: boolean;
 }
 
 export interface AdminTableColumn<T> {
@@ -63,8 +64,20 @@ export interface AdminTableProps<T extends AdminTableItem> {
   getItemLabel: (item: T) => string;
   editHref: (item: T) => string;
   onReorder: (order: { id: string; display_order: number }[]) => Promise<ActionResult<unknown>>;
-  onTogglePublished: (item: T, published: boolean) => Promise<ActionResult<unknown>>;
-  onDelete: (item: T) => Promise<ActionResult<unknown>>;
+  /** Omit entirely for an entity with no publish/draft concept (skill categories, profile) — hides the Switch/Status column rather than rendering a toggle with nothing to toggle. */
+  onTogglePublished?: (item: T, published: boolean) => Promise<ActionResult<unknown>>;
+  /** The default "Delete {label}? This can't be undone" confirmation, used by every entity so far. Mutually exclusive with `onRequestDelete` below — provide exactly one. */
+  onDelete?: (item: T) => Promise<ActionResult<unknown>>;
+  /**
+   * Escape hatch for an entity whose delete needs more than a yes/no
+   * confirmation — e.g. skill categories, which must warn and offer a
+   * choice (delete its skills, or move them elsewhere) when the category
+   * still has skills. When provided, AdminTable's own confirmation dialog
+   * never opens for this table; the row menu's "Delete" instead calls this
+   * directly, and the caller owns its own dialog/flow (including calling
+   * `router.refresh()` once it's done).
+   */
+  onRequestDelete?: (item: T) => void;
   onDuplicate?: (item: T) => Promise<ActionResult<unknown>>;
   emptyState: ReactNode;
 }
@@ -77,16 +90,16 @@ function SortableRow<T extends AdminTableItem>({
   pendingId,
   onTogglePublished,
   onDuplicate,
-  onRequestDelete,
+  onDeleteClick,
 }: {
   item: T;
   columns: AdminTableColumn<T>[];
   entityName: string;
   editHref: string;
   pendingId: string | null;
-  onTogglePublished: (checked: boolean) => void;
+  onTogglePublished?: (checked: boolean) => void;
   onDuplicate?: () => void;
-  onRequestDelete: () => void;
+  onDeleteClick: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const isRowPending = pendingId === item.id;
@@ -118,12 +131,14 @@ function SortableRow<T extends AdminTableItem>({
       ))}
 
       <div className="flex shrink-0 items-center gap-3">
-        <Switch
-          checked={item.published}
-          onCheckedChange={onTogglePublished}
-          disabled={isRowPending}
-          aria-label={item.published ? `Unpublish ${entityName}` : `Publish ${entityName}`}
-        />
+        {onTogglePublished ? (
+          <Switch
+            checked={Boolean(item.published)}
+            onCheckedChange={onTogglePublished}
+            disabled={isRowPending}
+            aria-label={item.published ? `Unpublish ${entityName}` : `Publish ${entityName}`}
+          />
+        ) : null}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -142,7 +157,7 @@ function SortableRow<T extends AdminTableItem>({
                 <CopyIcon className="size-4" /> Duplicate
               </DropdownMenuItem>
             ) : null}
-            <DropdownMenuItem variant="destructive" onSelect={onRequestDelete}>
+            <DropdownMenuItem variant="destructive" onSelect={onDeleteClick}>
               <TrashIcon className="size-4" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -171,6 +186,7 @@ export function AdminTable<T extends AdminTableItem>({
   onReorder,
   onTogglePublished,
   onDelete,
+  onRequestDelete,
   onDuplicate,
   emptyState,
 }: AdminTableProps<T>) {
@@ -194,6 +210,7 @@ export function AdminTable<T extends AdminTableItem>({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   async function handleTogglePublished(item: T, published: boolean) {
+    if (!onTogglePublished) return;
     const previous = rows;
     setPendingId(item.id);
     setRows((current) => current.map((row) => (row.id === item.id ? { ...row, published } : row)));
@@ -225,7 +242,7 @@ export function AdminTable<T extends AdminTableItem>({
   }
 
   async function handleConfirmDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !onDelete) return;
     const previous = rows;
     setIsDeleting(true);
     setRows((current) => current.filter((row) => row.id !== deleteTarget.id));
@@ -283,7 +300,7 @@ export function AdminTable<T extends AdminTableItem>({
               {column.header}
             </span>
           ))}
-          <span className="shrink-0">Status</span>
+          {onTogglePublished ? <span className="shrink-0">Status</span> : null}
         </div>
 
         {/* `id` prop is required for SSR: without it, dnd-kit generates its
@@ -303,15 +320,19 @@ export function AdminTable<T extends AdminTableItem>({
                 entityName={entityName}
                 editHref={editHref(item)}
                 pendingId={pendingId}
-                onTogglePublished={(checked) => handleTogglePublished(item, checked)}
+                onTogglePublished={onTogglePublished ? (checked) => handleTogglePublished(item, checked) : undefined}
                 onDuplicate={onDuplicate ? () => handleDuplicate(item) : undefined}
-                onRequestDelete={() => setDeleteTarget(item)}
+                onDeleteClick={() => (onRequestDelete ? onRequestDelete(item) : setDeleteTarget(item))}
               />
             ))}
           </SortableContext>
         </DndContext>
       </div>
 
+      {/* Only AdminTable's own default confirmation ever opens this — an
+          entity using `onRequestDelete` (skill categories) never sets
+          `deleteTarget`, so this stays permanently closed for it and the
+          caller's own dialog takes over entirely. */}
       <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>

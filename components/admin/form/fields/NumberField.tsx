@@ -13,6 +13,8 @@ export interface NumberFieldProps<TValues extends FieldValues> {
   max?: number;
   step?: number;
   disabled?: boolean;
+  /** When true, a cleared input commits `null` instead of coercing to `0` — for a genuinely optional numeric column (e.g. skill proficiency), where "empty" and "zero" are different values. Defaults to false, preserving every existing caller's always-a-number behavior (display_order, etc.). */
+  allowEmpty?: boolean;
 }
 
 export function NumberField<TValues extends FieldValues>({
@@ -24,6 +26,7 @@ export function NumberField<TValues extends FieldValues>({
   max,
   step,
   disabled,
+  allowEmpty,
 }: NumberFieldProps<TValues>) {
   return (
     <FormField
@@ -37,10 +40,15 @@ export function NumberField<TValues extends FieldValues>({
               name={field.name}
               ref={field.ref}
               onBlur={field.onBlur}
-              value={typeof field.value === "number" ? field.value : 0}
+              value={field.value === null || field.value === undefined ? "" : (field.value as number)}
               onChange={(event) => {
+                const raw = event.target.value;
+                if (raw === "" && allowEmpty) {
+                  field.onChange(null);
+                  return;
+                }
                 const parsed = event.target.valueAsNumber;
-                field.onChange(Number.isNaN(parsed) ? 0 : parsed);
+                field.onChange(Number.isNaN(parsed) ? (allowEmpty ? null : 0) : parsed);
               }}
               type="number"
               min={min}

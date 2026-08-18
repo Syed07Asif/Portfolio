@@ -23,6 +23,34 @@ export const optionalUrlSchema = z
   .nullable()
   .transform((value) => (value === "" ? null : (value ?? null)));
 
+/**
+ * Root-relative path — "/images/avatar.jpg", not "images/avatar.jpg" or
+ * "//evil.com" (a scheme-relative URL, which browsers treat as absolute
+ * and pointing off-site — rejected here for the same reason
+ * lib/auth.ts's resolveNextPath rejects it for redirect targets).
+ */
+const rootRelativePathSchema = z
+  .string()
+  .regex(/^\/(?!\/)\S*$/, "Must be a valid URL or a root-relative path (e.g. /images/photo.jpg)");
+
+/**
+ * Same as `optionalUrlSchema`, but also accepts a root-relative path —
+ * for image/logo/avatar columns specifically, not general-purpose external
+ * links. Every uploaded value going forward is a real absolute Storage URL
+ * (see lib/storage/upload.ts), but supabase/seed.sql seeds these columns
+ * with placeholder relative paths like "/images/avatar.jpg" (no real asset
+ * pipeline exists yet — see docs/progress.md's Phase 8 entry), and the
+ * public site already resolves that shape today (Phase 16's resume route
+ * does the same thing for `file_url`). Without this, editing any
+ * still-seeded entity through the admin — without also replacing its
+ * logo/avatar — fails validation on a field the admin never touched.
+ */
+export const optionalImageUrlSchema = z
+  .union([requiredUrlSchema, rootRelativePathSchema, z.literal("")])
+  .optional()
+  .nullable()
+  .transform((value) => (value === "" ? null : (value ?? null)));
+
 export const dateSchema = z.iso.date("Must be a valid date (YYYY-MM-DD)");
 export const optionalDateSchema = z
   .union([dateSchema, z.literal("")])
