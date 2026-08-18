@@ -47,15 +47,20 @@ section. Test rows created during verification were cleaned up afterward
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`.
-- **Latest commit:** Phases 7–18's work (previously sitting uncommitted
-  across many sessions) was committed and pushed to `origin/develop` in
-  one commit — see `git log -1 --oneline` for the exact hash, and `git
-  show <hash> --stat` for the full file list. `docs/progress.md` and
-  `CLAUDE.md` were already tracked as of `6b0b2f5` ("Add docs/progress.md
-  as a cross-session build log," Phase 6-era); everything since is this
-  one commit. `git status` should be clean (or close to it) right after —
-  if it isn't, something changed since this was written; read the diff
-  before assuming it's safe to touch. Note: Phase 17
+- **Latest commit:** `56b789a` — "Phases 7-18: full public site, admin
+  auth/shell, and shared admin infrastructure," pushed to `origin/develop`
+  (148 files, squashing everything built since `72f3b5a`/Phase 6 into one
+  commit since it had all been sitting uncommitted across many sessions —
+  `git show 56b789a --stat` for the full file list). `docs/progress.md`
+  and `CLAUDE.md` were already tracked as of `6b0b2f5` ("Add
+  docs/progress.md as a cross-session build log," Phase 6-era, one commit
+  before `72f3b5a` in history despite the name — it's a docs-only commit
+  layered on top). This very edit (recording the hash above) is a small
+  follow-up commit on top of `56b789a`, made *after* confirming the push
+  succeeded — expect `git log --oneline` to show it as the tip. If
+  `git status` isn't clean when a new session checks, something changed
+  since this was written; read the diff before assuming it's safe to
+  touch. Note: Phase 17
   moved `app/projects/`, `app/styleguide/`, `app/resume/`, and `app/page.tsx`
   into a new `app/(site)/` route group (see that phase's log entry for why)
   — `git status` shows the previously-tracked `app/styleguide/*` files as
