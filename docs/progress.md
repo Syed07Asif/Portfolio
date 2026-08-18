@@ -8,25 +8,114 @@ where the last one left off. This file answers "what's been done and why";
 for the actual reference material, this one for history and continuity.
 
 **To resume work in a new session:** read this file, then CLAUDE.md, then
-skim `git log --oneline` to confirm nothing has changed since the "Current
-state" section below was last updated. Each phase's commit message also has
-a detailed writeup — `git show <hash>` for the full reasoning behind a
-specific phase if this summary isn't enough.
+skim `git log --oneline` and `git status` to confirm nothing has changed
+since the "Where things stand" section below was last updated — see that
+section's own "Latest commit" bullet for the exact hash this was written
+against. Check `docker ps` for the local Supabase containers (they run
+independently of any chat session and are very likely still up — see
+below) and start the dev server (`preview_start` with `{"name":
+"portfolio-dev"}`, or `npm run dev`) since it does **not** persist between
+sessions and needs restarting every time. Each phase's commit message
+also has a detailed writeup — `git show <hash>` for the full reasoning
+behind a specific phase if this summary isn't enough.
 
 ## Where things stand
 
+**Phases 1–18 are done and verified.** Phase 18 ("shared admin
+infrastructure") had one earlier, failed attempt — removed entirely and
+rebuilt from scratch in a second attempt, which succeeded. All six
+required operations (create, edit, publish, unpublish, delete, reorder)
+were verified **live, with real clicks in a real browser**, against the
+real local Supabase stack, with the result confirmed both in Postgres
+directly and reflected on the public site — not assumed from the code.
+The full narrative, including two real bugs found and fixed along the
+way, is in this file's Phase 18 log entry below and in
+[docs/content-management.md](./content-management.md)'s "Two real bugs"
+section. Test rows created during verification were cleaned up afterward
+(`education` table is back to exactly `supabase/seed.sql`'s one row).
+
 - **Branch:** `develop` (all phase work happens here; `main` is still just
-  the Phase 1 scaffold — nothing has been merged up yet).
-- **Latest commit:** `72f3b5a` — "Phase 6: reusable UI primitives".
-- **No live Supabase project exists yet.** Every migration/RLS/data-layer
-  verification so far has been done against disposable local Postgres
-  containers or the local Supabase CLI stack (`supabase start`), never a
-  real hosted project. `.env.local` doesn't exist; only `.env.example`
-  (placeholders) is committed. Provisioning a real project, running the
-  migrations against it, and creating the admin account (documented in
-  [docs/deployment.md](./deployment.md#admin-account)) is still outstanding
-  — needed before the site can actually go live, but not before Phases
-  7+ can continue (those build UI against the local stack / mocked data).
+  the Phase 1 scaffold — nothing has been merged up yet). Tracks
+  `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
+- **Dev server:** stopped at the end of the session that wrote this —
+  it does not persist between sessions/restarts regardless. Start with
+  `preview_start`/`{"name": "portfolio-dev"}` (or `npm run dev`); if
+  anything looks stale afterward, `rm -rf .next` first (see the Turbopack
+  cache notes below).
+- **New dependencies added in Phase 18** (already `npm install`ed, in
+  `package.json`): `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
+  (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
+  shadcn components generated into `components/admin/ui/`: `switch.tsx`,
+  `textarea.tsx`.
+- **Latest commit:** Phases 7–18's work (previously sitting uncommitted
+  across many sessions) was committed and pushed to `origin/develop` in
+  one commit — see `git log -1 --oneline` for the exact hash, and `git
+  show <hash> --stat` for the full file list. `docs/progress.md` and
+  `CLAUDE.md` were already tracked as of `6b0b2f5` ("Add docs/progress.md
+  as a cross-session build log," Phase 6-era); everything since is this
+  one commit. `git status` should be clean (or close to it) right after —
+  if it isn't, something changed since this was written; read the diff
+  before assuming it's safe to touch. Note: Phase 17
+  moved `app/projects/`, `app/styleguide/`, `app/resume/`, and `app/page.tsx`
+  into a new `app/(site)/` route group (see that phase's log entry for why)
+  — `git status` shows the previously-tracked `app/styleguide/*` files as
+  deleted and the `(site)` copies as new/untracked rather than a detected
+  rename, since they were moved with plain `mv`, not `git mv`; functionally
+  identical, just not recorded as a rename in the diff.
+- **Local Supabase stack: currently running on this machine**, now with the
+  Auth service included — Docker containers
+  `supabase_db_syed-asif-portfolio`, `supabase_rest_syed-asif-portfolio`,
+  `supabase_auth_syed-asif-portfolio`, `supabase_kong_syed-asif-portfolio`
+  (`supabase_auth_*` is new as of Phase 17; every phase before it only
+  needed Postgres + PostgREST + Kong — see that phase's log entry for why
+  Auth had to be added and how, since it wasn't a simple `supabase start`).
+  Independent of any particular chat session — very likely still up in a
+  new session on this same machine (`docker ps` to confirm). The database
+  currently holds exactly `supabase/seed.sql`'s content plus one
+  Phase-17-created **local test admin account** (`test-admin@example.com`
+  / `Test-Admin-Pass-123!` — a real Supabase Auth user with a row in
+  `private.admins`, local-only, not a secret worth protecting since it's a
+  throwaway Docker Postgres instance; kept, not cleaned up, since a future
+  session building the actual content editors will want a working admin
+  login to test against without re-deriving this). Every phase's *content*
+  test rows (extra projects, experience entries, skills, etc.) were
+  inserted live for verification and then removed again, never left
+  behind. `.env.local` exists and is correctly configured (real, working
+  anon/service_role keys — **regenerated during Phase 17**, see that
+  phase's log entry and the JWT note below — old keys copied from before
+  Phase 17 will no longer work).
+- **Next.js dev server:** tied to this tool session's process management
+  (started via the `portfolio-dev` launch config), so a brand new chat
+  session likely needs to start it again — `preview_start` with `{"name":
+  "portfolio-dev"}`. If anything looks stale after starting it, `rm -rf
+  .next` first (see the Turbopack cache notes below).
+- **No live *hosted* Supabase project exists yet**, but as of Phase 7 the
+  layout shell is built against a genuinely running **local** stack rather
+  than mocks — `.env.local` now exists on this machine (gitignored, not
+  committed; only `.env.example` is). Provisioning a real hosted project,
+  running the migrations against it, and creating the *real* admin account
+  (documented in [docs/deployment.md](./deployment.md#admin-account) — a
+  different thing from Phase 17's local-only test account above) is still
+  outstanding — needed before the site can actually go live, but not
+  before further phases can continue.
+- **To stand up the local stack on a fresh machine/session:** Docker
+  Desktop must actually be *running* first (`docker info` — if it fails,
+  launch `Docker Desktop.exe` and wait; it's not always already up even
+  though it's installed). Then `npx supabase start --exclude
+  storage-api,studio,logflare,vector,imgproxy,edge-runtime,mailpit,supavisor,realtime,postgres-meta`
+  (note: **Auth/gotrue is now included**, unlike the flag set Phases 1–16
+  used — see [supabase/README.md](../supabase/README.md) and Phase 17's log
+  entry for why) and `npx supabase db reset`. **Do not hand-type a
+  "well-known local demo" anon/service_role JWT from memory** — the fixed
+  pair some docs/tutorials quote does not match this CLI version's actual
+  local `jwt_secret` and fails with `PGRST301 "None of the keys was able to
+  decode the JWT"` in a way that's easy to misdiagnose as an RLS problem.
+  Get the real values straight from the CLI instead: `npx supabase status
+  -o env` after `start` prints the current, definitely-correct
+  `ANON_KEY`/`SERVICE_ROLE_KEY` for whatever's actually running — trust
+  that output over anything previously saved in `.env.local`, since a
+  `supabase stop` + `start` cycle (needed in Phase 17 to add the Auth
+  service) regenerates these.
 - **Environment notes specific to this machine:** Windows, PowerShell is
   the working shell (Bash tool exists but has PATH/quoting quirks — prefer
   PowerShell for npm/node commands). Node.js and Docker Desktop were not
@@ -34,8 +123,8 @@ specific phase if this summary isn't enough.
   was already present). `npx supabase start` works but the full stack
   (`storage-api`, `studio`, `logflare`/analytics) is flaky/resource-heavy
   locally — see [supabase/README.md](../supabase/README.md) for the minimal
-  `--exclude` flag set that reliably starts just Postgres + PostgREST +
-  Kong, which is all `lib/data` needs.
+  `--exclude` flag set that reliably starts Postgres + PostgREST + Auth +
+  Kong, which is all `lib/data` and Phase 17's auth flow need.
 
 ## Phase log
 
@@ -113,6 +202,949 @@ different utility group than text-color classes — fixed by extending
 this permanently-dark site's `.dark` class) and dropped an unnecessary
 `next-themes` dependency shadcn's installer pulled in.
 
+**Phase 7 — layout shell.** `components/layout/Navbar.tsx`,
+`Footer.tsx`, `PageTransition.tsx`, wired into `app/layout.tsx` alongside a
+skip-to-content link, and a placeholder `app/page.tsx` rendering empty
+`Section`s for every homepage anchor (hero through contact) so the shell
+could be proven before any real content exists. Nav items are fully
+data-driven (`site_settings.primary_nav`, typed fallback to
+`DEFAULT_NAV_ITEMS`) — adding a nav item is a database row, not a code
+change, per CLAUDE.md's core principle. New hooks:
+`hooks/useActiveSection.ts` (IntersectionObserver scrollspy, ids derived
+from whatever hash-anchor `navItems` it's given — no hardcoded section
+list), `hooks/useFocusTrap.ts` + `hooks/useLockBodyScroll.ts` (mobile nav
+overlay: Tab-cycling trap, Escape/backdrop/route-change close, body scroll
+lock). Anchor scrolling is offset for the fixed header **without any JS
+scroll math**: a new `--header-height` token
+([styles/tokens.css](../styles/tokens.css)) plus
+`scroll-mt-(--header-height)` added to the shared `Section` primitive
+([components/ui/Section.tsx](../components/ui/Section.tsx)) and a
+reduced-motion-aware `scroll-behavior: smooth` in
+[styles/globals.css](../styles/globals.css) — every current and future
+section gets correct offset/smooth scrolling for free. A shared
+`resolveAnchorHref()` ([lib/utils.ts](../lib/utils.ts)) makes both Navbar
+and Footer links resolve `#about` → `/#about` off the homepage, so nav
+anchors still work from a future project detail page instead of doing
+nothing. **Two more real primitive/tooling gaps surfaced by first real
+usage** (same pattern as Phase 6): `IconButton`'s `asChild` never actually
+worked — it didn't use `Slottable` the way `Button` does, so a
+caller-supplied wrapping element (needed for the footer's icon-only social
+links) was silently discarded; fixed in
+[components/ui/IconButton.tsx](../components/ui/IconButton.tsx) to mirror
+`Button`'s pattern exactly. And the pinned `lucide-react` version ships no
+brand/logo icons at all (`Github`/`Linkedin`/`Twitter` etc. don't exist in
+this package) — contact-link icons are generic Lucide icons keyed by
+`contact_type` instead (`Mail`/`Briefcase`/`FolderGit2`/`MessageCircle`/
+`Share2`/`Link2`), not the row's own freeform `icon` string. Also hit (and
+fixed by adjusting state during render instead of in an effect, per React's
+own guidance) `eslint-plugin-react-hooks`'s `set-state-in-effect` rule
+flagging the common "close mobile menu on route change" pattern.
+
+**Phase 8 — hero section.** `components/sections/Hero.tsx`: the first real
+(non-placeholder) section, and the pattern later sections should follow —
+an `async` Server Component that calls `getProfile()`/`getActiveResume()`
+itself (see the updated
+[components/sections/README.md](../components/sections/README.md):
+sections fetch their own data now, co-located rather than prop-drilled from
+`app/page.tsx`; layout components are still the exception since their data
+is shared across every route). Two small `"use client"` children carry the
+actual animation: `HeroReveal.tsx` (staggered reveal of eyebrow/name/
+headline/availability badge/tagline/bio/CTAs via lib/motion.ts's existing
+`staggerContainer`/`staggerItem` — nothing new added there) and
+`HeroBackground.tsx` (three large blurred, low-opacity, corner-positioned
+color-wash blobs drifting via `transform`-only Framer animation; capped to
+one blob on mobile via responsive `hidden`/`block`, paused via `useInView`
+the moment the hero scrolls out of the viewport, and reduced-motion-safe
+for free via `MotionProvider`). Every content field is independently
+optional and conditionally rendered — verified by actually nulling out
+`headline`/`tagline`/`short_bio`/`availability_status` (and even
+`current_role`) directly in the local Postgres database mid-session and
+confirming the hero degrades to just the eyebrow + name + CTAs without any
+broken gaps, rather than trusting that "should" work from reading the code.
+`profile.headline` falls back to `profile.current_role` before falling all
+the way back to nothing. The single `<h1>` is the name only — no other
+heading tags anywhere in the section. New `--hero-min-height: calc(100vh -
+var(--header-height))` token, applied only at `lg:` and up
+(`lg:min-h-(--hero-min-height)` on Hero's `Container`); below `lg` the hero
+sizes to its content instead, specifically so mobile never risks pushing
+the CTAs below the fold. **Mobile fit needed one real correction, not just
+a hunch**: at a literal 360×640 viewport the initial `py-20`/`gap-4` padding
+pushed the CTA row 38px past the fold — caught by actually measuring
+`getBoundingClientRect()` against `window.innerHeight`, fixed by dropping to
+`py-8`/`gap-3` below `sm:`, re-verified at 34px of clearance afterward.
+Skipped a literal portrait/photo despite the reference images showing one:
+`profile.avatar_url` exists in the schema but no asset pipeline or actual
+image exists yet in this project, and the phase's own CONTENT list didn't
+call for one — treated the references as tone/rhythm inspiration, not a
+literal spec, given they're also a different color palette than this
+site's tokens.
+
+**Phase 9 — about section.** `components/sections/About.tsx`: unlike Hero,
+this one *does* reuse `Section`/`SectionHeading` normally — About has no
+full-bleed background layer, so there's no reason to hand-roll the outer
+wrapper the way Hero had to. Two children: `AboutContent.tsx` (client —
+`staggerContainer` + `revealOnScroll` together on one grid, portrait and
+text as the two `staggerItem`s: the combo requirement 5 asked for, no
+change to lib/motion.ts needed) and `AboutPortrait.tsx` (client — a large
+square portrait, deliberately *not* `components/ui/Avatar`: Avatar is a
+small circular identity marker that always renders `unoptimized`, whereas
+this needs real `next/image` with a proper `sizes` attribute at a much
+bigger size, so it's its own component with its own initials-fallback
+tile). Empty-content handling is layered, matching the two different
+"empty" cases the brief called out: `About.tsx` (server) hides the *entire*
+section when every About-relevant profile field is empty (verified for
+real — nulled every field directly in Postgres mid-session and confirmed
+the section vanishes from the DOM, not just "should" per the code);
+`AboutContent.tsx` renders `EmptyState` in the bio's place specifically
+when only `long_bio` is empty but other fields (avatar, location, ...)
+still exist, so those don't get hidden along with it. `profile.headline`
+doubles as the "focus area" quick-fact — the schema has no dedicated
+`focus_area` field, and headline already reads as one; flagged this
+interpretation call rather than silently picking it. **Requirement 6 ("no
+layout assumption may depend on bio length") was verified, not assumed**:
+swapped `long_bio` between a ~40-word and the real ~220-word version
+directly in the database and measured the rendered DOM both times — the
+grid's `items-start` alignment keeps the portrait a fixed aspect-square
+regardless of how tall the text column gets, confirmed by comparing
+`getBoundingClientRect()` width vs. height on the portrait in both cases.
+The placeholder `long_bio` itself (three paragraphs: background/education,
+technical interests, career direction) lives in
+[supabase/seed.sql](../supabase/seed.sql) — not hard-coded in any
+component — and paragraphs are split server-side on blank lines
+(`splitParagraphs()` in [lib/utils.ts](../lib/utils.ts)) into plain `<p>`
+children, never `dangerouslySetInnerHTML`, so the "don't accept raw HTML"
+requirement is structural rather than something to remember to enforce.
+
+**Phase 10 — skills section.** `components/sections/Skills.tsx` (server —
+`getSkillCategoriesWithSkills()`) + `SkillsContent.tsx` (client — the
+category grid, chips, and both stagger levels). No per-skill icons: the
+brief explicitly wants "consistent typographic chips, not a grid of
+mismatched brand logos," and this project's `lucide-react` version ships no
+brand marks anyway (same fact Footer's contact icons ran into in Phase 7),
+so a plain text chip is the one treatment guaranteed to look uniform
+whether a category has 1 skill or 20 — verified both counts side by side
+with real inserted test rows, not just reasoned about. Category icons *do*
+resolve (a small curated kebab-case-slug → Lucide-component map, same
+pattern as Footer's `CONTACT_ICON_BY_TYPE`), with an unrecognized slug
+falling back to a generic icon rather than silently showing nothing, since
+the admin explicitly asked for one. **Two-level stagger without touching
+lib/motion.ts**: categories stagger via the unmodified `staggerContainer`
+on the outer grid; each category's own skill list is a *nested*
+`staggerContainer` that inherits its "visible" state from the outer
+cascade (ordinary Framer variant propagation — no separate viewport
+trigger needed on the inner list) but gets a per-instance `transition`
+override (`staggerChildren` scaled down as `skills.length` grows) so a
+20-skill category finishes cascading in well under a second instead of
+stacking 20× the default per-item delay. Hit a real
+`react-hooks/static-components` lint error resolving category icons
+(`const Icon = lookup(); return <Icon/>` reads to the React Compiler rule
+like a component being defined during render, even though every value in
+the lookup table is a stable, module-level reference) — fixed by turning
+the icon resolution into a plain function that *returns* the finished
+`<span><Icon/></span>` tree (`renderCategoryIcon()`, called as
+`{renderCategoryIcon(...)}`) instead of exposing a capitalized variable to
+JSX tag position; worth recognizing on sight next time a "look up a
+component from a map" pattern shows up; a `useMemo` wrapper does **not**
+satisfy this rule, only restructuring away from the `<Var/>` shape does.
+Verified the zero-published-skills-category-must-not-render and
+1-vs-20-skill-balance requirements with real data: inserted four extra
+test categories/skills directly into Postgres (one unpublished-only
+category, one 20-skill category, mixed-proficiency rows) via `psql` piped
+through `docker exec` — `supabase db query` chokes on multi-statement
+scripts ("cannot insert multiple commands into a prepared statement"), so
+multi-statement test seeding goes through `docker exec -i
+supabase_db_<project> psql -U postgres -d postgres < file.sql` instead —
+then reset the database back to the real single-category seed row
+afterward with `supabase db reset`.
+
+**Phase 11 — experience & education.** Two sections sharing a visual
+language but built as separate component trees:
+`components/sections/Experience.tsx` (server → `ExperienceContent.tsx`,
+client, the timeline rail → `ExperienceItem.tsx`, the card content, server
+so its text is in the initial HTML) and the same three-file shape for
+Education, minus the rail. **The timeline connector never needs "first/last
+item" special-casing** because of how it's built: each `<li>` only ever
+draws the line *below* its own dot (via a flex sibling with `flex-1` that
+stretches to match however tall that row's card turns out to be — no
+absolute positioning, no height measurement), and the last item simply
+skips rendering that line. There's structurally no way for a stub to hang
+off either end, which is why the 1-entry and 9-entry cases (tested live,
+not just reasoned about — see below) both render correctly with zero
+conditional logic aimed specifically at "is this the first/last one".
+**Alternating left/right on desktop, single column on mobile** is two
+separate DOM structures in the same `<li>` behind `md:hidden` /
+`hidden md:flex` — the same pattern Navbar's mobile-menu-vs-desktop-nav
+already uses in this codebase, chosen over CSS-order tricks because a
+truly centered rail with content alternating sides needs a 3-slot
+layout, and duplicating the (stateless) card render was simpler and more
+robust than fighting `order`/`grid` arbitrary-value temptations to avoid
+it. Descriptions render at **full length, never clamped** — a deliberate
+choice (the brief offered clamp-with-expand as the alternative): the
+rail already handles arbitrary card height for free, so clamping would
+only add interactive state with nothing to gain, and *two* DOM copies of
+that state (mobile/desktop) would need to stay in sync for no reason.
+**Duration math was verified with a throwaway `tsx` script before it ever
+touched a component** — `formatDuration()`
+([lib/utils.ts](../lib/utils.ts)) counts elapsed months as a plain
+non-inclusive difference (Jan 2022 → Jan 2023 reads as a clean "1 yr", not
+"1 yr 1 mo") floored at 1 month, which is what makes a same-month
+start/end read as "1 mo" instead of "0 mos" — the one case the brief
+explicitly called out. Date parsing splits the "YYYY-MM-DD" string
+directly rather than going through `new Date(...)`, avoiding the classic
+timezone off-by-one where UTC midnight reads back as the previous local
+day. **Verified the longevity requirement with real inserted data, not
+just design reasoning**: 9 experience entries (mixed field completeness —
+some with no logo/location/description/responsibilities/technologies at
+all) and 3 education entries, inserted via the same `docker exec ... psql`
+route Phase 10 established, confirmed the alternating parity holds for
+all 9, the rail has no stub at either end, mobile collapses every card to
+the same left edge, and a same-month entry prints "1 mo" — then reset back
+to the real single-entry seed rows afterward.
+
+**Phase 12 — projects (the most important section).** New
+`components/sections/projects/` subfolder — the first section built as a
+folder rather than a flat file, because `ProjectCard`/`ProjectGrid` are
+shared by *two* callers, not one: the homepage's `Projects.tsx` (featured,
+capped, with a "View all" link) and the new `/projects` index page
+(everything, unfiltered). Real data-layer gaps had to be fixed before any
+UI work, not routed around: `Project` (the lean list type `getProjects()`
+returns) had no `technologies` field at all — only the single-project
+detail fetch did — so a card couldn't show "top 3–4 technologies" without
+one. Fixed by embedding `project_technologies` in
+`fetchProjects()`'s existing query
+([lib/data/projects.ts](../lib/data/projects.ts), same embedded-select
+pattern `fetchProjectBySlug` already used) rather than adding a second
+per-card query. **The "pure function in lib/" the brief asked for
+(`selectProjects()` in [lib/projects.ts](../lib/projects.ts)) is the
+actual, only place "featured first, then display_order" sorting happens**
+— `getProjects()` itself doesn't sort that way, so this isn't a
+redundant/decorative wrapper, `ProjectGrid`'s `featuredOnly`/`limit` props
+route through it for real, and `category`/`query` are already part of its
+signature (accepted, unused) so a future filter UI is an implementation
+inside this one function, not a signature change rippling through every
+caller. **Reused `Card`'s `interactive href` mode for the whole-card link
+requirement** (one `<a>`, nothing nested inside — Card's own doc comment
+already warned about this) rather than hand-rolling it, and gave it an
+explicit `aria-label={project.name}` so the accessible name is just the
+project name, not the image alt text + description + every tech tag
+concatenated. **`Card` itself had a real gap for this phase's "keyboard-
+reachable, not hover-only" requirement**: its `whileHover` (Framer) had no
+`whileFocus` counterpart, so the lift/glow animation was mouse-only —
+fixed by mirroring `whileHover` onto `whileFocus`
+([components/ui/Card.tsx](../components/ui/Card.tsx)), which now benefits
+every current and future interactive `Card`, not just project cards;
+verified by calling `.focus()` on a card and confirming the same
+`translateY(-6px)` transform applied as hover does. Missing/broken logos
+fall back to a centered-initials tile (same pattern as `AboutPortrait`
+from Phase 9) — deliberately *not* `components/ui/Avatar`, same reasoning
+as `AboutPortrait`: this needs real `next/image` with `sizes` and a
+loading skeleton, at a size Avatar was never meant for. **Verified the
+requirements that actually matter at scale with real inserted data**: 11
+published projects (one unpublished, correctly excluded) including one
+with 5 technologies (correctly capped to 4 on the card) and three
+featured (correctly sorted to the front as a group, correctly ringed +
+badged); flipped `featured` off entirely to confirm the homepage section
+falls back to the first N by `display_order`; flipped `published` off
+entirely to confirm the homepage section hides while `/projects` shows
+`EmptyState` instead of an empty grid — two different empty-handling
+behaviors for two different callers, both correct. A minimal
+`/projects/[slug]` placeholder page exists so `ProjectCard` doesn't link
+to a 404 (`notFound()` still fires for a genuinely invalid slug) — the
+real case-study layout (problem/solution/features/media) is explicitly
+out of scope here and left for a later phase.
+
+**Phase 13 — the real project detail page.** Replaced Phase 12's
+placeholder `app/projects/[slug]/page.tsx` with the full case-study
+layout. **The "no redeploy" requirement is a route-config detail, not a
+new caching mechanism** — `generateStaticParams()` pre-renders known
+slugs, `dynamicParams` is simply left at its Next.js default (`true`,
+never overridden) so an unknown-at-build slug still renders on demand
+instead of 404ing, and `export const revalidate = 3600` on the page keeps
+already-pre-rendered pages from being static forever. Full reasoning
+(and how it composes with `lib/data`'s existing tag-based invalidation
+for a future admin panel) is written up in
+[docs/architecture.md](../docs/architecture.md)'s new "Per-route
+revalidation" section, per the brief's explicit ask to document it
+there. **Verified the exact mechanism, not just the code path**: inserted
+a brand-new project row directly in Postgres mid-session and loaded its
+page with zero server restart — it rendered immediately, because
+`getProjectBySlug("that-new-slug")` had never been cached before (first
+call, not stale). Its *absence* from the `/projects` grid's prev/next
+computation until the cache actually cleared was equally instructive and
+is now called out explicitly in the architecture doc — `getProjects()`
+(the list) was already cached from earlier in the session with the old
+count, so a brand-new slug being instantly reachable directly and a
+brand-new slug being instantly *listed* are two different guarantees, not
+one. Extracted `formatOptionalDateRange()` into
+[lib/utils.ts](../lib/utils.ts) (generalizing what `EducationItem` had
+private and duplicated, since projects need the identical
+both-dates-optional branching with different label text) rather than
+writing a third copy. Reused `ProjectCardImage` for the header logo
+instead of building a second logo-with-fallback component — added
+`className`/`sizes`/`priority` overrides so the same component serves
+both the grid's full-width square and the header's small fixed one.
+Fixed a real, previously-unnoticed gap while wiring up canonical URLs:
+no route anywhere had ever set `metadataBase`, so `next dev` had been
+silently warning and falling back to `http://localhost:3000` for every
+Open Graph image since Phase 8 — now set once on the root layout from
+`NEXT_PUBLIC_SITE_URL`, letting every route's `generateMetadata` use
+relative canonical/OG URLs instead of each one string-concatenating an
+origin by hand. **Verified requirement 4 (a minimal name+description-only
+project must look deliberate) with a real inserted row, not just
+design reasoning**: it rendered a logo-initials tile, the name, a status
+badge (status always has a DB default, never actually null), an Overview
+section carrying the description, and full footer navigation — with
+every other block (short description, dates, GitHub/demo buttons,
+problem/solution/purpose, technologies, features) correctly absent
+rather than rendered empty. `app/projects/not-found.tsx` (route-segment,
+not the root 404) returns a genuine HTTP 404 — confirmed with `curl -o
+/dev/null -w "%{http_code}"`, not just eyeballing the rendered page.
+
+**Phase 14 — project media gallery and lightbox.** Filled in
+`components/sections/projects/ProjectMediaGallery.tsx` (previously a
+deliberate no-op stub — see Phase 13's log entry) without touching the
+detail page around it, exactly as that stub's own comment promised. Split
+into the same small-file pattern every other multi-piece section already
+uses: `ProjectMediaGallery.tsx` (Server Component, renders nothing for zero
+media rows, otherwise the "Gallery" heading + client `MediaGallery`),
+`MediaGallery.tsx` (client — owns grid + lightbox state, keyboard nav, and
+the two hooks), `MediaThumbnail.tsx` (one grid cell, three render paths),
+`MediaLightbox.tsx` (the dialog). New pure-function file `lib/media.ts`
+(`isViewableMedia`, `resolveMediaLabel`) — same "pure function in lib/"
+precedent Phase 12 set with `lib/projects.ts`.
+
+**The accessible-dialog requirements were built by reusing, not
+reinventing, Phase 7's Navbar mobile-nav pattern**: `useFocusTrap` +
+`useLockBodyScroll` are called in `MediaGallery` (the state owner) with a
+ref forwarded down to `MediaLightbox`'s root dialog node — identical split
+to how Navbar drives its mobile overlay. This gets focus-moves-in,
+Tab-trapping, and **focus returning to the exact thumbnail that opened
+it** for free from the existing hook, verified live: opened the dialog via
+a real click, pressed Escape, and confirmed `document.activeElement` was
+back on that same thumbnail `<button>`, not just "should be" per the code.
+
+**Real gaps found and fixed, not routed around** (same pattern as every
+earlier phase's real-bug catches):
+- `next.config.ts` had never configured `images.remotePatterns` —
+  `Avatar.tsx` and `AboutPortrait.tsx` had already independently flagged
+  this exact gap in their own comments and worked around it
+  (`unoptimized`/same-origin-only) rather than fixing it, since nothing
+  before this phase needed real optimization of a remote asset. Fixed for
+  real this time (scoped to Storage's public-object path, derived from
+  `NEXT_PUBLIC_SUPABASE_URL` at config-eval time) since "thumbnails are
+  small optimized derivatives, full images load on demand" is meaningless
+  without it — Requirement 4 doesn't work at all against a genuine remote
+  Supabase Storage URL otherwise. `Avatar`/`AboutPortrait` themselves
+  weren't touched (out of this phase's scope), but the gap they both
+  flagged no longer exists for anything new.
+- **GIFs bypass next/image entirely** (a plain `<img>`, both thumbnail and
+  lightbox) — Next's image optimizer would otherwise flatten the animation
+  to a single frame. This is a real constraint, not caution: verified the
+  rendered thumbnail's `<img src>` was the raw `file_url`, never a
+  `/_next/image?...` proxy URL.
+- **`project_media` has no poster/thumbnail field for video** (only
+  `file_url`, `storage_path`, `media_type`, `title`, `alt_text`, `caption`,
+  `display_order` — confirmed against the actual schema, not assumed).
+  Rather than add a migration unprompted (CLAUDE.md's "don't scaffold
+  ahead of phase"), video thumbnails/lightbox use `preload="metadata"`,
+  which gets a browser-decoded first frame for free without one. Flagging
+  this here rather than silently treating it as equivalent to a curated
+  poster image — a future phase adding a real `poster_url` column would be
+  a legitimate follow-up, not scope creep on this one.
+
+**Alt-text fallback and the single-item grid requirement were both proven
+with real inserted data, not just design reasoning** — 20 test
+`project_media` rows spanning all five `media_type`s (mixed alt_text/title
+completeness, all pointing at genuinely nonexistent files, same trick
+Phase 8/9 used for their own broken-image fallback tests) inserted via the
+established `docker exec ... psql` route, then removed again afterward.
+Confirmed: `resolveMediaLabel`'s alt_text → title → generated-label chain
+produced correct, non-empty labels for every combination; the lightbox's
+position indicator correctly counted only the 19 *viewable* items (the
+20th was the document row, excluded by design since it's a download link,
+never lightbox content); Left/Right/Home/End all moved the correct
+direction; a dispatched synthetic `error` event on a thumbnail's `<img>`
+swapped it for the `ImageOff` placeholder, never a broken-image icon. The
+1-item grid case didn't need special-casing to verify separately: a plain
+CSS grid item with no explicit column-span structurally cannot stretch
+past its own track, which is what makes "1, 3, or 20 items never looks
+broken" true without any item-count branching in the component.
+
+**Two environment-specific things worth recording for next time**: (1)
+**another chat session's dev server was already running against this same
+project directory**, and Next.js 16's own dev-server lock (keyed to the
+project directory, not the port) refuses a second `next dev` instance
+against it even with `autoPort`/a different port — the fix isn't a
+different port, it's recognizing you don't need your own server at all
+when one's already watching the same files: the other session's server
+picks up saved edits via normal HMR, so pointing the Browser pane at its
+existing origin works fine. (2) That server also already had this
+project's detail page cached (`unstable_cache`, Phase 13's documented
+gotcha) from *before* the test rows were inserted, and there's no admin
+panel yet to call `revalidateTag` through — worked around by temporarily
+adding a one-line `app/api/<name>/route.ts` calling
+`revalidateTag(CACHE_TAGS.projects)`, hitting it once, then deleting the
+route again immediately after (twice — once to see the test data, once
+more after cleaning it back up, so the other session was never left
+looking at stale phantom rows). **A route folder named with a leading
+underscore (`__debug-revalidate`) 404s** — Next.js's App Router treats any
+`_`-prefixed segment as a private, non-routable folder; had to rename it
+without the leading underscore before it would actually match.
+
+New reusable variant added to `lib/motion.ts`: `slideVariants` (a
+`custom`-direction-aware enter/center/exit set for carousel-style
+"advancing forward vs. going back" transitions) — the lightbox is its
+first user, but it's written generically enough for a future carousel to
+reuse rather than being lightbox-specific. New token in
+`styles/tokens.css`: `--lightbox-media-max-height: min(70vh, 640px)`,
+same "viewport-relative sizing gets a named token" precedent Phase 8 set
+with `--hero-min-height`, not a raw `vh` arbitrary value in the component.
+
+**Phase 15 — certifications and achievements.** Replaced two of
+`app/page.tsx`'s three remaining placeholder `<Section>`s (Contact is still
+a placeholder, deliberately — out of this phase's DATA list) with real
+sections, each following the established "Server Component fetches via
+`lib/data`, returns `null` on zero rows, hands off to a small client child
+for animation" shape every prior section uses.
+
+**Certifications** (`Certifications.tsx` → `CertificationGrid.tsx` →
+`CertificationCard.tsx`) deliberately borrows from *two* existing families
+at once, since the brief asked for both at the same time: ProjectGrid's
+exact grid/stagger/hover-lift treatment (so it visually belongs next to
+Projects), but ExperienceItem/EducationItem's Avatar-plus-text header
+composition instead of ProjectCard's full-width cover image — an
+organization logo is a small mark, not a hero screenshot, and gets the
+same monogram-fallback `Avatar` those two already use. Not
+`interactive`/whole-card-link like ProjectCard: a certification can carry
+*two* genuine separate links (verify credential, view certificate), so it
+stays a static `Card` with real anchors inside, same as
+ExperienceItem/EducationItem's own optional link.
+
+New pure-function file `lib/certifications.ts` (`resolveExpiryStatus`) —
+same "pure function in lib/" precedent as `lib/projects.ts`/`lib/media.ts`.
+**The "honest but not alarming" expired-state requirement became a Badge
+variant choice, not new UI**: `success` (green, same as
+`ProjectStatusBadge`'s "completed") for a future expiration, `neutral`
+(plain gray, no red/danger) for a past one — reusing Badge's existing
+variant scale rather than inventing a new visual treatment for "expired."
+Date comparison is against *today's local calendar date* assembled from
+`Date`'s getters, not `new Date().toISOString()`'s UTC string — same
+timezone-off-by-one trap `lib/utils.ts`'s existing date helpers already
+guard against, applied here for the first time to a comparison rather than
+just formatting.
+
+**Achievements** (`Achievements.tsx` → `AchievementsContent.tsx` →
+`AchievementItem.tsx` + `AchievementThumbnail.tsx`) went with the compact-
+list option the brief offered rather than a second card grid — mostly so
+three sections in a row (Projects, Certifications, Achievements) don't all
+read as the same "grid of cards" shape. `AchievementThumbnail.tsx` is a new
+small dedicated image-with-fallback component (same contract as
+`ProjectCardImage`/`AboutPortrait`: real image when `image_url` is set, a
+centered icon tile — `Award`, not initials, since a monogram doesn't make
+sense for an achievement title — when it's null or the load fails), kept
+separate from `ProjectCardImage` rather than reused since it's sized and
+composed differently (a small fixed square inside a horizontal list row,
+not a card's full-width top image). `AchievementItem`'s meta row (org ·
+date) had to be written generically rather than copying
+`ExperienceItem`'s — Experience always has a guaranteed `start_date` to
+anchor the dot-separator logic on, but both `organization` and `date` are
+independently optional on `achievements`, so the separator is inserted
+between whichever already-truthy values survive a filter, not hardcoded
+around two fixed fields.
+
+**Both sections' "hide entirely on zero published rows" requirement (not
+just an empty heading) was verified live, not assumed** — temporarily set
+`published = false` on every row in both tables (via the same `docker exec
+... psql` route established in earlier phases) and confirmed via
+`document.querySelectorAll('h2')` that both the "Certifications" and
+"Achievements" headings were completely absent from the DOM, not merely
+visually hidden, then restored `published = true` and confirmed both
+reappeared with the original seed content intact. Also verified: the
+expired/no-expiry/missing-credential-id/missing-both-links certification
+combinations and the no-image/no-date/no-actions achievement combinations
+all render exactly the fields they should and nothing else (via temporary
+test rows, same insert-then-clean-up pattern Phase 10 established), and no
+horizontal overflow at a real 360px viewport.
+
+**Same shared-dev-server situation as Phase 14, same fix**: another chat's
+`next dev` was already running against this project directory, so rather
+than fighting Next's own single-instance-per-directory lock, the Browser
+pane just pointed at that already-running origin directly (it picks up
+saved edits via normal HMR). Cache-busting after inserting/removing test
+rows used the identical throwaway-route trick Phase 14 documented
+(`revalidateTag` behind a one-off `app/api/<name>/route.ts`, deleted
+immediately after each use) — this time revalidating both
+`CACHE_TAGS.certifications` and `CACHE_TAGS.achievements` together in one
+route since both tables needed fresh data for the same verification pass.
+
+**Phase 16 — contact section and resume download; the public site is
+complete.** Two independent pieces of work, one shared decision point.
+
+**Decision, per the brief's own explicit instruction to ask first**: no
+contact form. Asked the user directly rather than defaulting silently;
+they confirmed the brief's own stated default (channels + resume only, no
+form/spam-protection/email-delivery scope).
+
+**Contact** (`Contact.tsx` → `ContactContent.tsx`) reuses Card's
+`interactive href` whole-card-link mode (like ProjectCard) for each
+channel, not Footer's icon-only treatment — this is the site's primary
+contact destination, so the label and raw value (email, phone, handle) are
+both visible. New shared `lib/contactLinks.ts`
+(`CONTACT_ICON_BY_TYPE`/`resolveContactIcon`/`resolveContactHref`/
+`isExternalContactHref`) is the "one lookup object... sensible default
+icon for unknown types" the brief asked for, literally — and **fixed a
+real gap in Footer.tsx along the way**: Footer's own pre-existing
+`contactHref()` only ever built a WhatsApp link from an explicit `url`
+column value, never derived one from `value` the way the brief specifies
+("WhatsApp renders as a wa.me link built from the stored value") — nothing
+before this phase had ever exercised a WhatsApp row for real, so the gap
+was latent. Fixed once in the shared module, which both Footer and Contact
+now import, rather than fixing it only where the new phase happened to
+touch. Email and WhatsApp are *unconditionally* derived from `value`
+(mailto:/wa.me, digits-only for the latter) regardless of whatever the
+row's own `url` happens to hold — every other type uses `url` as given, or
+is skipped if unset. The copy-email control is a standalone button below
+the channel grid, not nested inside the email card itself: nesting a
+second interactive control inside an already-whole-card `<a>` would create
+two focusable targets with an unclear boundary, the exact trap Card's own
+doc comment warns about.
+
+**New `components/ui/Toaster.tsx`** — a public-site-themed `sonner`
+instance (CSS-variable-driven off our own `--color-*` tokens, not
+Tailwind's `!important` overrides), deliberately a *separate* instance
+from `components/admin/ui/sonner.tsx`: that one is shadcn-themed and
+admin/overlay-only per CLAUDE.md ("never imported by components/ui or
+sections/"), so reusing it directly would have crossed that boundary. Both
+wrap the same underlying `sonner` dependency (already pinned in
+package.json), not a second toast library. Mounted once in
+`app/layout.tsx`.
+
+**Resume download** (`app/resume/route.ts`) streams the active resume
+through this one stable route — `lib/constants.ts`'s new `RESUME_ROUTE`
+constant, which Hero, Footer (a genuinely new addition — Footer never had
+a resume link before this phase), and Contact all point at instead of a
+resume row's own `file_url` — with a forced `Content-Disposition:
+attachment; filename="Syed-Asif-Resume.pdf"` so the public URL survives a
+re-upload and the downloaded file always has a polished name regardless of
+the underlying Storage object's own path. A relative `file_url` (the local
+seed's shape) is resolved against `NEXT_PUBLIC_SITE_URL` before an
+internal `fetch()`, so the same code path handles both a local relative
+path and a real remote Storage URL uniformly. **A real, verified-live gap
+in the original design**: `notFound()` called from inside a Route Handler
+does *not* render the nearest `not-found.tsx` the way it does from a Page
+or Server Component — confirmed with a direct `curl`, which showed a
+`404` status with a **completely empty body**, not the friendly
+`app/resume/not-found.tsx` originally written for this. Fixed by
+redirecting to a real page instead — `app/resume/unavailable/page.tsx`,
+reached via `redirect("/resume/unavailable")` — which trades a literal 404
+status for an actual React-rendered, on-brand page (full site chrome,
+`EmptyState`, a "Contact instead" way out), a trade-off documented
+directly in both files' comments. The original route-segment
+`not-found.tsx` was deleted rather than kept alongside as dead weight,
+since it was never actually reachable via the real failure path. The
+single download-count TODO the brief asked for lives directly in the
+route's success branch, right after the active-resume check — the one
+place every real download (as opposed to someone finding a raw Storage
+URL some other way) passes through.
+
+**The shared dev server from Phase 14/15 was actually broken this time,
+not just stale-cached** — after several rounds of edits (renamed/removed
+functions, a new `components/ui/index.ts` export), the other session's
+long-running Turbopack process started serving genuinely stale compiled
+JS referencing symbols (`contactHref`, `resumeUrl`) that no longer existed
+in source, confirmed by reading the actual files on disk and by a
+completely clean **isolated `next build`** (via a temporary `distDir`
+override in `next.config.ts`, so it wrote to `.next-verify/` instead of
+touching the live server's own `.next/`) succeeding with zero errors.
+Since fixing this required restarting a process shared with another
+session, asked the user first rather than acting unilaterally — they
+approved, so the stuck process was stopped (`Get-NetTCPConnection`/
+`Stop-Process` on the PID holding port 3000), `.next` was cleared, and the
+dev server was restarted clean via the normal `portfolio-dev` launch
+config, which is what this session's dev server now actually is (no
+longer "another chat's server" — see "Where things stand" above). One
+side note worth remembering: right after that restart, `read_console_messages`
+kept reporting the *same* old stale errors on the *original* tab even
+though `read_page` on that identical tab showed genuinely fresh, correct
+DOM content — opening a brand-new tab showed zero console errors
+immediately. The console-message log is apparently sticky per-tab history
+across navigations/reloads in this tool, not re-scoped per page load;
+don't trust it over direct DOM/network evidence when the two disagree,
+especially right after a server restart.
+
+**Verified live with real inserted/temporary data, not just design
+reasoning, the same way every prior phase did**: all five `contact_type`
+values at once (LinkedIn/GitHub/Twitter-as-`other`/WhatsApp test rows
+alongside the seed's Email row) — confirmed wa.me construction, external
+`target="_blank" rel="noreferrer noopener"`, and the `other`-type fallback
+icon all resolved correctly, then removed and cache-busted back to just
+the seed's single Email row. The resume route's actual happy path (a
+temporary placeholder PDF written to a `public/documents/resume/` that
+doesn't otherwise exist in this repo, same reasoning as every other
+seed-referenced asset path in this project) confirmed real byte-for-byte
+streaming and the exact `Content-Type`/`Content-Disposition`/
+`Cache-Control` headers, then the temp file and `public/` directory were
+removed again. The no-active-resume redirect path was verified by
+toggling `resumes.is_active` off and on directly in Postgres. **A few of
+these checks briefly looked broken and weren't** — chaining a cache-bust
+`curl` and the follow-up verification `curl` too tightly (even as two
+separate tool calls back-to-back with no gap) intermittently read stale
+data once or twice; a `sleep 1`–`2` between revalidating and re-checking
+resolved it every time. Worth remembering as a lighter-weight cousin of
+the `unstable_cache`-survives-a-restart lesson below: revalidation isn't
+always instantaneously visible to the very next request either.
+
+**Phase 17 — admin authentication and the protected shell.** The first
+phase touching `app/admin/`. Two structural prerequisites had to happen
+before any auth code could, plus the auth/shell work itself, plus a real
+local-environment gap the phase surfaced.
+
+**Prerequisite: `app/(site)/` route group.** The public site's Navbar and
+Footer were rendered by the single root `app/layout.tsx`, unconditionally
+wrapping *every* route — which would have put the public header/footer
+around the admin panel's own sidebar/header too, since Next.js layouts
+compose additively down the tree with no per-route opt-out except route
+groups. Fixed by moving every public route (`page.tsx`, `projects/`,
+`styleguide/`, `resume/`) into a new `app/(site)/` group with its own
+layout carrying the Navbar/Footer/skip-link/PageTransition/siteSettings-
+driven metadata (everything the old root layout used to render), and
+shrinking the true root `app/layout.tsx` to just `<html>`/`<body>`, fonts,
+`MotionProvider`, and `Toaster` — the pieces genuinely shared by both
+trees. `/admin` sits as a sibling top-level segment with none of the
+`(site)` group's chrome. Route groups don't change URLs, so every existing
+public path is unchanged; only file locations moved (`@/` alias imports
+meant zero import-path fixes were needed even for the deeply-nested
+`styleguide/_components/` subtree).
+
+**Prerequisite: `app/admin/(protected)/` route group, for a different
+reason.** The brief's own requirement ("a server-side auth check inside
+the /admin layout itself") reads as one literal `app/admin/layout.tsx`
+doing the check for everything under it — but a layout that redirects
+*every* unauthenticated child to `/admin/login` would also redirect
+`/admin/login` itself (a child of that same layout) to `/admin/login`,
+infinite-looping, since Next.js layouts have no built-in way to know
+"this child *is* the login page" without pathname access a Server
+Component layout doesn't get. The standard, documented resolution is
+exactly the tool this codebase already reached for in the `(site)` case:
+a route group. `app/admin/login/` is a sibling of `app/admin/(protected)/`,
+not nested inside it, so the protected layout's auth check — the real
+"layer 2" — only ever wraps pages that are actually supposed to require
+it. No literal `app/admin/layout.tsx` file exists; the auth-checking
+layout lives at `app/admin/(protected)/layout.tsx` instead, documented
+directly in that file's header comment so the deviation from the brief's
+literal path is explained on sight, not silently different.
+
+**Two-layer route protection, deliberately split by cost, not
+duplicated:** `proxy.ts` (originally written as `middleware.ts` — see
+below) only checks *session existence* (`supabase.auth.getUser()`, one
+token verification, no extra round trip) and refreshes the session
+cookie on every `/admin/*` request; `app/admin/(protected)/layout.tsx`
+is the only place that additionally calls `is_admin()` (an RPC, a real
+`private.admins` table lookup). Checking `is_admin()` in *both* layers
+would mean every admin request pays for two RPC calls to confirm the
+same fact twice — the two layers each catch a different failure mode
+instead (proxy catches "no session at all"; the layout catches "has a
+session but isn't the admin," today only a theoretical case since
+there's exactly one Supabase Auth user, but the code doesn't assume
+that stays true). RLS (Phase 3) is the third, backstop layer neither of
+the first two can be misconfigured *around* — even a bypassed proxy and
+layout would still hit `is_admin()`-gated policies on every actual query.
+Uses `getUser()`, never `getSession()`, in both layers — `getSession()`
+reads the cookie's claims without revalidating them against the Auth
+server, which defeats the point of a route guard.
+
+**Next.js renamed `middleware.ts` to `proxy.ts` in this exact version** —
+discovered from a real runtime deprecation warning after writing
+`middleware.ts` the conventional way, not from reading changelogs ahead of
+time. Migrated with Next's own `@next/codemod middleware-to-proxy`
+codemod rather than hand-renaming (it also renames the exported function
+`middleware` → `proxy`, which a manual rename would be easy to miss) —
+the codemod refused to run against this repo's long-uncommitted git state
+until passed `--force`, safe here since the change was scoped and
+verifiable by diff afterward. `lib/supabase/middleware.ts` (the actual
+session-refresh helper `proxy.ts` calls into) keeps its name — only the
+special Next.js convention file at the project root was renamed, not
+every file with "middleware" in it, and doc comments referencing the old
+filename were updated to point at `proxy.ts` instead.
+
+**Login form: `useActionState` + a native `<form>`, not `react-hook-form`**
+— a deliberate departure from the pattern `lib/validation/README.md`
+otherwise establishes for future admin forms. Two required fields don't
+need `react-hook-form`'s `Controller`/`FormProvider` machinery, and given
+the brief's own "security matters more than polish" framing, the
+security-critical path reads more auditable as a plain form bound directly
+to a Server Action than through an extra client-side form-state layer.
+`lib/validation/adminLogin.ts` still exists and is still Zod (the same
+"single source of truth" schema idea, just not paired with RHF this time).
+**Error messages never reveal whether an email exists** — Supabase's own
+`signInWithPassword` already returns one generic error for both "wrong
+password" and "no such user," but the action's own post-sign-in
+`is_admin()` check could easily have leaked "your password was right, you
+'re just not the admin" if handled carelessly; it doesn't — a failed
+`is_admin()` check signs the session back out immediately and returns the
+exact same generic string as a wrong password. Client-side "debounce
+repeated attempts" (disable-while-pending plus a short forced cooldown
+after 3 consecutive failures) is explicitly UX, not the real security
+boundary — documented as such in the component, since Supabase Auth's own
+server-side rate limiting is what actually stops brute-forcing and the
+action already surfaces that distinctly (`status === 429`) when it fires.
+**Open-redirect guard, verified live, not just written**: `next` query
+params are validated (`resolveNextPath()` — must start with `/admin`, no
+`://`, no leading `//`, no backslash) before ever reaching `redirect()`;
+tried `?next=https://evil.com` end-to-end through a real sign-in and
+confirmed it lands on `/admin`, never navigates off-site.
+
+**Dashboard counts needed a data-access path lib/data's public modules
+structurally can't provide**: every public `fetchX` hardcodes
+`.eq("published", true)` in the query itself, not just relying on RLS —
+so even an authenticated admin session calling `fetchProjects()` would
+still only ever see published rows. New `lib/data/adminDashboard.ts`
+queries the same tables without that filter, using the cookie-aware
+`createClient()` (the signed-in admin's own session, which RLS's
+`is_admin()` policies grant full visibility to) — twelve
+`count: "exact", head: true` queries in parallel for
+total/published/draft per entity, no row data transferred for the counts
+themselves. Deliberately not wrapped in `unstable_cache` like every public
+`getX`: it needs `cookies()` (forbidden inside `unstable_cache` anyway),
+and with exactly one viewer, live-every-load is strictly better than
+stale-for-up-to-an-hour. "Recently updated" edit links point at each
+entity's section page (`/admin/projects`, not `/admin/projects/<id>`) —
+no per-item edit route exists yet, so linking to one would just be a
+different-shaped 404; the real editor phase replaces this along with the
+`ComingSoon` placeholder pages.
+
+**A real, previously-invisible local-environment gap, found by actually
+trying to log in, not assumed away:** the local Supabase stack (Phases
+1–16) never included the Auth service — `supabase/README.md`'s own
+documented minimal `--exclude` flag set explicitly excludes `gotrue`,
+because nothing before Phase 17 ever needed real authentication. Hit
+"AuthRetryableFetchError: name resolution failed" (a 503 from Kong, no
+backend registered for `/auth/v1/*`) trying to create a test admin user,
+traced it to zero `supabase_auth_*` container existing at all (not
+stopped — never created). **`supabase start` with a new, less-restrictive
+`--exclude` list does not retroactively add services to an
+already-initialized stack** — had to `supabase stop` (data preserved by
+default; only `--no-backup` discards volumes) and `start` fresh for the
+Auth container to actually get created. That cycle **regenerates the
+project's JWT signing material**, silently invalidating every
+`NEXT_PUBLIC_SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY` saved in
+`.env.local` from before it — caught by the same "verify against the
+real thing" instinct the original JWT lesson (below) already established:
+`npx supabase status -o env` is the authoritative source, not whatever
+was previously saved, and `.env.local` was updated to match before
+anything else in this phase could be tested. A throwaway `tsx` script
+(deleted after use, same pattern as every other throwaway verification
+script in this project) created the local test admin via the service-role
+Admin API — `private.admins` isn't reachable through the API even with
+that key (by design, see docs/architecture.md), so granting admin access
+was still a direct `docker exec ... psql` insert, exactly as
+docs/deployment.md describes for a real project.
+
+**The explicit "confirm it's impossible while signed out" check was done
+literally, not assumed from the code**: a real incognito browser window
+isn't available in this tool environment, so the closest faithful
+equivalent — a `curl` request carrying zero cookies at all — was run
+against all eleven `/admin/*` routes. Every single one returned a clean
+`307` to `/admin/login?next=<original path>`, never a 200, never a crash.
+Also verified live rather than assumed: successful login redirecting to
+the originally-requested `next` path, sign-out actually clearing the
+session (confirmed by re-attempting `/admin` afterward and landing back
+on login, not just trusting the redirect response), the mobile drawer's
+`role="dialog"`/`aria-modal`/body-scroll-lock/focus-trap (identical
+`useFocusTrap`/`useLockBodyScroll` hooks Navbar's mobile menu already
+uses), and that no client component anywhere in `app/admin/` or
+`components/admin/` imports `lib/supabase/admin.ts` or
+`SUPABASE_SERVICE_ROLE_KEY` (grepped directly, confirmed the only matches
+are that file itself — already `server-only`-guarded — and docs).
+**One check's result was a test-methodology artifact, not a bug**: using
+`element.click()` via `javascript_exec` to simulate opening the mobile
+drawer doesn't move focus the way a genuine user click does, so the
+subsequent close-and-restore-focus check appeared to fail (focus stayed
+on "Close menu" instead of returning to "Open menu") — confirmed by
+checking `document.activeElement` immediately after the synthetic open
+click and finding it was never the trigger button to begin with, so
+there was nothing correct to restore *to*. The underlying mechanism is
+unmodified from Navbar's/MediaLightbox's already-verified hook usage, not
+new code this phase wrote its own version of.
+
+**Phase 18 — shared admin infrastructure (done, verified live).** First
+attempt (same phase, earlier session) hit an unresolved bug — the
+create/edit form's submit never reached React's `onSubmit`, falling
+through to a native browser GET — and was removed entirely rather than
+built on top of. This is the second, independent attempt, rebuilt from
+scratch, which succeeded and was verified live end-to-end.
+
+**What was built**, per the brief's "every content module after this
+should be mostly configuration" goal:
+
+- **`lib/actions/shared.ts`** — `ActionResult<T>`, `actionSuccess`/
+  `actionError`, `reorderInputSchema`, and `createAdminAction()`, the
+  wrapper enforcing steps (a) session check + (b) admin check (reusing
+  Phase 17's `getAuthenticatedAdmin()`) before an entity handler ever
+  runs, catching/sanitizing any thrown error so a raw Postgres error can
+  never reach the client. `parseInput()` — step (c) — parses against an
+  *existing* `lib/validation` schema and reshapes a failed Zod parse into
+  the `fieldErrors` shape `useAdminForm` maps onto `form.setError(...)`.
+  Every entity action is a plain exported `const` wrapping
+  `createAdminAction(handler)` (a higher-order-function pattern, not
+  `async function` declarations) — deliberately, since this is still a
+  valid `"use server"` export as long as the final bound value is an
+  async function; documented inline since it's a slightly unusual shape
+  for anyone expecting one-action-per-`async function`.
+- **`lib/storage/upload.ts`** (client-safe: `uploadFile`, `removeFiles`,
+  `extractStoragePath`, `buildStoragePath`) and **`lib/storage/
+  cleanup.ts`** (server: `deleteStorageFolder`) — every uploaded file
+  lives at `{bucket}/{recordId}/{uuid}.{ext}`, so one
+  `deleteStorageFolder` call removes everything a record owns with no
+  `storage_path` bookkeeping needed. Uploads go straight from the browser
+  to Storage using the admin's own session (Storage's `authenticated` +
+  `is_admin()` policies already cover it), not through a Server Action.
+  No native upload-progress callback exists in the installed
+  `@supabase/storage-js` — deliberately indeterminate-spinner UX instead
+  of a byte percentage.
+- **`components/admin/table/`** — `AdminTable` (generic over
+  `{id, display_order, published}`, dnd-kit drag-to-reorder with
+  optimistic update + rollback-on-failure, inline publish `Switch`, a
+  `DropdownMenu` row-actions menu, an `AlertDialog` delete confirmation
+  naming the item via a caller-supplied `getItemLabel`), `StatusPill`,
+  `AdminTableSkeleton` (exported for a *JSX-scoped* `<Suspense>` fallback,
+  not a route `loading.tsx` — see the hydration bug below for why).
+- **`components/admin/form/fields/`** — nine field components
+  (`TextField`, `TextareaField` — with a `markdown` flag standing in for
+  "rich text or markdown" without a new editor dependency, since no
+  public-facing markdown renderer exists yet either — `DateField`,
+  `SelectField`, `SwitchField`, `NumberField`, `TagInputField`,
+  `SlugField`, `RepeatableGroupField`). `SlugField`'s and `TagInputField`'s
+  own local state (manual-override flag, debounced availability check,
+  draft tag text) is owned by a dedicated sub-component invoked as real
+  JSX inside `FormField`'s `render` callback, never called as a plain
+  function there — that callback runs inline during `Controller`'s own
+  render, not as its own JSX element, so it never gets its own Fiber and
+  calling hooks directly inside it would be unsound. Both also hit the
+  project's now-familiar `set-state-in-effect` lint rule (immediate
+  synchronous transitions computed during render via a mirrored
+  previous-value comparison; only the genuinely async callback's
+  `setState` stays inside the effect) — same fix Phase 17's `LoginForm`
+  and this same file needed.
+- **`components/admin/form/useAdminForm.ts` + `AdminFormShell.tsx`** —
+  the shared submit/validate/error/toast/unsaved-changes machinery.
+  `zodResolver`'s TypeScript types (bridging Zod 3/4 signatures) can't be
+  satisfied by a fully generic `<TSchema extends z.ZodType<FieldValues>>`
+  wrapper without fighting variance errors indefinitely — one contained
+  `schema as never` / `as unknown as Resolver<Values>` pair at the exact
+  `zodResolver(schema)` call site resolves it; every *external* caller
+  (every entity form) still gets a fully type-checked `form`/`onValid`
+  pair. `AdminFormShell` is a plain `<form onSubmit={form.handleSubmit
+  (onValid)}>` — no portal, no indirection between the tag and the fields
+  it wraps, kept deliberately simple after the first attempt's unresolved
+  submit bug.
+- **`hooks/useUnsavedChangesGuard.ts`** — `beforeunload` for real browser
+  navigation, a capture-phase `document` click listener for in-app
+  `<Link>`/`<a>` clicks. **Directly implicated in the first attempt's
+  submit bug** (the leading suspect at the time) **but conclusively
+  cleared this time**: this rebuild uses the exact same
+  capture-phase-click-listener design, and submission works correctly —
+  so the first attempt's bug was never actually this hook (it was the
+  `loading.tsx` hydration issue below, present in both attempts).
+- **`components/admin/upload/ImageUploader.tsx` +
+  `MultiImageUploader.tsx`** — drag/drop + click, instant local preview
+  via `URL.createObjectURL`, client-side validation via the entity's own
+  `fileSchema(STORAGE_BUCKETS.x)`, remove (clears the field immediately,
+  attempts a same-instant storage delete non-fatally), gallery variant
+  adds multi-select + dnd-kit reorder.
+  `MultiImageUploader`/`RepeatableGroupField` are both built to spec but
+  **unproven end-to-end** — no entity with a gallery or repeatable-group
+  field has been wired up yet (Education has neither).
+- **`components/admin/PageHeader.tsx`, `EntityFormPageShell.tsx`,
+  `EmptyState.tsx`** — shared list-page header, create/edit page shell,
+  and "no items yet" state, deliberately separate from `components/ui/`'s
+  public-site equivalents per CLAUDE.md's admin/public primitive
+  boundary.
+- **Education, wired through everything above**: `lib/data/education.ts`
+  gained `AdminEducation`, `fetchEducationForAdmin`,
+  `fetchEducationByIdForAdmin`; `lib/actions/education.ts` has all six
+  actions; `deleteEducation` calls `deleteStorageFolder` first;
+  `duplicateEducation` clears the copy's logo URL rather than pointing it
+  at the original's storage folder.
+
+**Two real bugs, found live and fixed** — full technical writeup in
+[docs/content-management.md](./content-management.md#two-real-bugs-found-and-fixed-while-proving-this-phase),
+summarized here:
+
+1. **A route-level `loading.tsx` broke hydration for nested dynamic
+   routes.** This *was* the first attempt's unresolved submit bug,
+   reproduced identically in this second, independently-written attempt —
+   proving it was never about `AdminFormShell`, `useAdminForm`,
+   react-hook-form, or `useUnsavedChangesGuard` (all prime suspects last
+   time). Root cause: `app/admin/(protected)/education/loading.tsx`
+   (meant only for the list page) also wrapped `new/` and `[id]/edit/`
+   (Next's `loading.js` convention cascades to a segment's nested
+   children), and on this exact Next.js 16.3.1 + Turbopack + React 19
+   combination, that combination reproducibly breaks client hydration for
+   the nested dynamic route's streamed content on a hard navigation —
+   confirmed by checking for `__reactFiber$`/`__reactProps$` keys
+   directly on the DOM (present on a sibling client component, absent on
+   every node inside the form, despite the form's component function
+   demonstrably executing) and by a clean bisection (a bare
+   `<form onSubmit={preventDefault}>` reproduced the exact same failure;
+   removing `loading.tsx` fixed it; restoring `loading.tsx` broke it
+   again, identically). Fixed by deleting the route-level `loading.tsx`
+   and using a plain JSX-scoped `<Suspense>` around just the list page's
+   own data-fetching component instead (see
+   `app/admin/(protected)/education/page.tsx`) — which doesn't cascade to
+   sibling segments the way the file convention does.
+2. **dnd-kit's default `<DndContext>` accessibility id isn't
+   SSR-deterministic** — produced a real (if non-fatal) hydration
+   mismatch on `aria-describedby` (`DndDescribedBy-0` server vs.
+   `DndDescribedBy-1` client), caught via the Next.js dev overlay's issue
+   badge while verifying the education list page, not assumed away.
+   Fixed by passing a fixed, unique `id` prop to every `<DndContext>`
+   (`"admin-table"`, `"multi-image-uploader"`).
+
+**All six required operations verified live** against the real local
+Supabase stack, in a real browser, with results confirmed via `docker
+exec ... psql` directly against Postgres and (for publish-affecting
+operations) by reading the rendered public homepage:
+
+- **Create** — filled and submitted the real form (`form_input` for field
+  values, a genuine `.click()` — not a synthetic `dispatchEvent` — on the
+  actual submit button), confirmed the new row in Postgres, confirmed the
+  success toast, confirmed the redirect to the list page.
+- **Edit** — same pattern against `[id]/edit`, confirmed the changed
+  field in Postgres.
+- **Publish** — confirmed `published` flipped `true` in Postgres *and*
+  the entry appeared on the live public homepage's Education section
+  within the same request (proving `updateTag`/`revalidatePath` actually
+  bust `getEducation()`'s cache, not just written and assumed).
+- **Unpublish** — same toggle, same code path, confirmed the row
+  disappeared from the public site again.
+- **Delete** — this one specifically needed the Browser pane to be
+  genuinely displayed/composited (the environment's own
+  `document.visibilityState` was `"hidden"` for a long stretch of this
+  session, which blocks pixel-coordinate clicks and Radix's
+  pointerdown-based dropdown trigger — confirmed directly, not assumed;
+  see "Recurring lessons" below for the addition to that entry). Once
+  displayed: opened the real row-actions dropdown, clicked Delete,
+  confirmed the "Delete \<item name\>?" dialog named the correct row,
+  confirmed, verified the row gone from Postgres.
+- **Reorder** — real pixel drags (`left_click_drag`) didn't register with
+  dnd-kit's `PointerSensor` (too few intermediate pointer-move events for
+  its internal activation/collision logic, confirmed by logging actual
+  `pointerdown`/`pointermove`/`pointerup` events during the attempt — 2
+  moves total wasn't enough); a manually-dispatched `PointerEvent`
+  sequence with ~15 intermediate `pointermove` steps and small delays
+  between them, targeting the grip handle's real
+  `getBoundingClientRect()` coordinates, did register and completed the
+  drag correctly. Confirmed the new `display_order` in Postgres and the
+  new order on the public homepage.
+
+Test rows (`Test University`, `Second Test College`) created during this
+verification were deleted afterward and `Example University`'s
+`display_order` reset to `0`, restoring the `education` table to exactly
+`supabase/seed.sql`'s original single row; a throwaway `/api/debug-
+revalidate` route (same pattern Phase 14/15 established) busted the
+public-site cache after that direct-SQL cleanup, then was deleted.
+
 ## Recurring lessons worth not re-learning
 
 - **Verify against the real thing, not a simulated harness.** Phase 3's
@@ -138,20 +1170,159 @@ this permanently-dark site's `.dark` class) and dropped an unnecessary
 - **This is a Windows/PowerShell environment.** Background npm/npx
   installs routinely exceed the default tool timeout on first run (image
   pulls, cold caches) — use `run_in_background` and expect to check back
-  rather than assume a timeout means failure.
+  rather than assume a timeout means failure. Docker Desktop being
+  *installed* doesn't mean it's *running* — `supabase start` fails fast
+  with a `LegacyDockerLifecycleInspectError` if the daemon isn't up yet;
+  launch `Docker Desktop.exe` and wait for `docker info` to succeed first.
+- **Never hand-type a "well-known local Supabase demo" anon/service_role
+  JWT from memory — verify it against the actual running stack.** See the
+  "Where things stand" note above for the exact symptom
+  (`PGRST301`/`"None of the keys was able to decode the JWT"`, which reads
+  like an RLS bug but isn't one) and the fix (read the real secret out of
+  the `supabase_rest_*` container's `PGRST_JWT_SECRET` env var and mint a
+  fresh token against it).
+- **A stale `unstable_cache` result (e.g. `null` cached during a window
+  when Supabase was unreachable) can survive `rm -rf .next/cache` *and* a
+  full dev-server process restart** under Next 16 + Turbopack — Phase 7 hit
+  this after fixing the JWT above: `getProfile()`/`getSiteSettings()` kept
+  returning the old cached `null` while the unwrapped `fetchX()` succeeded
+  every time. Only deleting the *entire* `.next` directory (not just
+  `.next/cache`) reliably busted it. Reach for this immediately if a
+  `lib/data` value looks wrong in dev despite the underlying query
+  demonstrably working (verify with a raw `fetchX()` call or `curl` against
+  PostgREST directly to confirm it's a cache problem, not a data/RLS one,
+  before nuking `.next`).
+- **The Browser-pane preview tool needs the user to have actually opened
+  the pane to composite frames.** If it hasn't been, `requestAnimationFrame`
+  never fires in that tab — this doesn't just block screenshots, it silently
+  stalls anything Framer-Motion-driven (`AnimatePresence` exit/unmount,
+  scroll-reveal, page transitions) and real `window.scrollTo`/pointer
+  coordinates stop working too. Verify animated/interactive logic via DOM
+  state, ARIA attributes, and dispatched synthetic events instead of
+  pixel-based interaction when this happens — it's an environment
+  limitation, not proof of an application bug. **Phase 18 hit this for a
+  genuinely extended stretch** (the user needed several prompts/minutes to
+  actually display the pane) — `computer{action:"screenshot"}` fails
+  outright (not just silently stale) while it's not displayed, which is
+  actually a reliable, explicit signal to check for before trusting any
+  pixel-coordinate interaction; don't assume a stale screenshot is "close
+  enough." Two sub-lessons from getting real interaction working once the
+  pane *was* displayed: (1) `element.click()` fires a real `click` event
+  but does **not** synthesize the `pointerdown`/`pointermove`/`pointerup`
+  sequence real mouse interaction produces — this is invisible for a plain
+  `onClick` handler (works fine) but silently no-ops for Radix's
+  `DropdownMenu`/similar triggers, which listen for `pointerdown`
+  specifically; dispatching a real `PointerEvent('pointerdown', ...)`
+  fixed it. (2) `computer{action:"left_click_drag"}`'s single
+  down-move-up gesture didn't supply enough intermediate `pointermove`
+  events for dnd-kit's `PointerSensor` to register a drag at all (confirmed
+  by logging the actual events it dispatched — only 2 moves total); a
+  manually-dispatched `PointerEvent` sequence with ~15 intermediate
+  `pointermove` steps (small delays between each), targeting the drag
+  handle's real `getBoundingClientRect()` coordinates, worked reliably —
+  reach for this pattern directly next time a dnd-kit drag needs verifying
+  live, rather than re-discovering it.
+- **Same root cause, different symptom: `document.visibilityState` is
+  `"hidden"` in that tab whenever the pane hasn't been opened, which means
+  the Paint Timing API never fires at all** — `performance.getEntriesByType
+  ("paint"|"largest-contentful-paint")` comes back empty even long after
+  load, not just slow to populate. Confirmed in Phase 8 trying to measure
+  the hero's LCP: `tabs_select`-fronting the tab doesn't change it. There is
+  currently no way to get a real LCP number from this tool without the user
+  opening the pane themselves — say so plainly rather than report a
+  fabricated or proxy number (`domContentLoadedEventEnd`/`loadEventEnd` are
+  not LCP and shouldn't be presented as if they were).
+- **Same root cause, a third symptom: default (lazy) `next/image` loads can
+  sit for several seconds with zero network request recorded** in this
+  hidden/non-composited tab — Phase 9 hit this verifying `AboutPortrait`'s
+  broken-image fallback (`/images/avatar.jpg` doesn't exist on disk, so the
+  `onError` fallback path is genuinely exercised, not just defensive code).
+  A plain `fetch()` from the page confirmed networking itself works fine
+  immediately; it's specifically the native lazy-load visibility trigger
+  that's stalled. It does eventually resolve on its own — just give it a
+  few seconds (or dispatch a synthetic `error` event on the `<img>` to
+  verify the handler directly) rather than concluding the fallback is
+  broken after one quick check.
+- **`resize_window` followed immediately by a `javascript_exec` in the same
+  turn can read stale `window.innerWidth`/`innerHeight`** — Phase 10 saw a
+  resize to 360×740 report success but the very next check still read
+  768×1024 (the *previous* viewport) until re-queried a moment later.
+  Re-check `window.innerWidth`/`innerHeight` directly after a resize before
+  trusting layout measurements taken right after one, rather than assuming
+  a reported "viewport set" means the tab has actually repainted at that
+  size yet.
+- **`rm -rf .next` can fail with `Device or resource busy` on Windows right
+  after `preview_stop`** — Turbopack doesn't always release every file
+  handle the instant the process exits. A short pause and retry (or just
+  running the same `rm -rf .next` command again) clears it; no need to dig
+  further or assume something's actually wrong.
+- **The local Supabase stack's excluded-services list (`supabase/README.md`)
+  isn't permanent — it reflects what earlier phases happened to need, not a
+  hard limit.** Phase 17 needed real Auth for the first time and discovered
+  `gotrue` had been excluded since Phase 1. `supabase start` with a
+  *different* `--exclude` list does not add newly-included services to an
+  already-running stack; only `supabase stop` (data preserved unless
+  `--no-backup`) followed by a fresh `start` actually creates the missing
+  container. That cycle also regenerates the JWT signing material, which
+  silently invalidates every key already saved in `.env.local` — always
+  re-derive from `npx supabase status -o env` after a stop/start cycle,
+  never assume old keys still work just because the URL didn't change.
+- **Next.js renamed the `middleware.ts` file convention to `proxy.ts`** in
+  the version this project is on (16.3.1) — writing a conventional
+  `middleware.ts` still works but logs a runtime deprecation warning.
+  `npx @next/codemod@canary middleware-to-proxy .` migrates it correctly
+  (renames the file *and* the exported function name, `middleware` →
+  `proxy` — easy to half-do by hand) but refuses to run against an
+  uncommitted git tree without `--force`, which is safe to pass when the
+  change is scoped and you can verify the diff afterward.
 
 ## Next up
 
-Phases 7–16 (per the user's own framing in Phase 6's brief) build the
-actual portfolio sections — hero, about, skills, experience, projects,
-education, certifications, achievements, contact, etc. — as
-`components/sections/*`, composing:
-- content from `lib/data` (Phase 4),
-- design tokens + motion (Phase 5),
-- primitives from `components/ui` (Phase 6, and per CLAUDE.md's rule, no
-  section should define its own button/card/badge styling).
+**The public site is done** (`app/(site)/`, Phases 1–16), **admin
+authentication + the protected shell are done** (`app/admin/`, Phase 17),
+and **the shared admin infrastructure is done and proven** (Phase 18) —
+`AdminTable`, `AdminForm` + its nine field components, `ImageUploader`/
+`MultiImageUploader`, `lib/actions/` Server Action machinery, and
+Education wired all the way through as the proof entity, with all six
+CRUD-plus-publish operations verified live. Every sidebar destination
+other than Dashboard and Education (`app/admin/(protected)/profile/`,
+`skills/`, `experience/`, `projects/`, `certifications/`, `achievements/`,
+`blog/`, `resume/`, `settings/`) is still a `ComingSoon` placeholder page
+— real per CLAUDE.md's "build the seam, not the feature" precedent, not
+an oversight; Phase 18's whole point was proving the infrastructure with
+*one* entity before wiring the rest.
 
-No further detail on Phases 7+ exists yet — those prompts haven't been
+What's left:
+- **The remaining content editors (Phase 19+)** — repeat Phase 18's
+  five-step pattern (documented in
+  [docs/content-management.md](./content-management.md#the-shape-of-an-entity-module))
+  once per entity: admin read functions in `lib/data/<entity>.ts`,
+  `lib/actions/<entity>.ts`, `<Entity>Form`/`<Entity>Table`, and the three
+  route files. Every entity already has a Zod schema in `lib/validation/`
+  (Phase 4) and shadcn primitives are already installed (Phase 6) — this
+  really should be "mostly configuration," per the brief, since the
+  machinery itself is proven. **Projects is the natural next one**: it's
+  the first entity that will actually exercise `SlugField`'s live
+  duplicate-check and `RepeatableGroupField` (project features) for real,
+  both currently built but unproven end-to-end (see
+  docs/content-management.md's "Known gaps"); it also has child tables
+  (`project_technologies`, `project_features`, `project_media`) and a
+  gallery field, which will exercise `MultiImageUploader` for the first
+  time and need `revalidatePath` calls at three places (`/`, `/projects`,
+  `/projects/[slug]`) per docs/architecture.md's Per-route revalidation
+  section.
+- **Provisioning a real hosted Supabase project** — still only a local
+  stack exists (see "Where things stand" above); needed before the site
+  can go live regardless of admin panel status, per
+  [docs/deployment.md](./deployment.md#admin-account) (a *different*,
+  real admin account from Phase 17's local-only test one).
+- Real content (actual project screenshots/resume PDF/portrait/logos) —
+  every asset path referenced by `supabase/seed.sql` is still a
+  placeholder that doesn't exist in `public/`, by design (see this file's
+  Phase 8/9/14/16 notes on that being deliberately exercised, not an
+  oversight).
+
+No further detail on any of these exists yet — those prompts haven't been
 given. When they arrive, update this file's "Where things stand" and add a
 new phase-log entry the same way the ones above are written: what got
 built, key files touched, and anything non-obvious a future session would

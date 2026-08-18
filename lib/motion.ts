@@ -101,6 +101,27 @@ export const hoverGlow = {
   transition: { duration: DURATION.fast, ease: EASE.outQuart },
 };
 
+// -- Directional slide (carousel / lightbox) -------------------------------
+// For a sequence where the next/previous item should visibly slide in from
+// the direction of travel — pass the direction (+1 advancing, -1 going
+// back) as the `custom` prop on both the animated child *and* the
+// surrounding AnimatePresence (so the outgoing item's exit also picks up
+// the latest direction, not whatever it mounted with):
+//   <AnimatePresence custom={direction}>
+//     <motion.div key={id} custom={direction} variants={slideVariants}
+//       initial="enter" animate="center" exit="exit" />
+//   </AnimatePresence>
+
+export const slideVariants: Variants = {
+  enter: (direction: number) => ({ opacity: 0, x: direction > 0 ? 48 : -48 }),
+  center: { opacity: 1, x: 0, transition: { duration: DURATION.base, ease: EASE.outQuart } },
+  exit: (direction: number) => ({
+    opacity: 0,
+    x: direction > 0 ? -48 : 48,
+    transition: { duration: DURATION.fast, ease: EASE.outQuart },
+  }),
+};
+
 // -- Page transitions ---------------------------------------------------
 
 export const pageTransition: Variants = {

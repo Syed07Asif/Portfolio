@@ -4,15 +4,29 @@ import { CACHE_TAGS } from "@/lib/constants";
 import type { Project, ProjectDetail, ProjectFeature, ProjectMedia, ProjectTechnology } from "@/types/content";
 import { logDataError } from "./shared";
 
-/** Raw query, unwrapped — see profile.ts's fetchProfile for why. */
+type ProjectRow = Omit<Project, "technologies"> & {
+  project_technologies: Pick<ProjectTechnology, "id" | "name">[];
+};
+
+/**
+ * Raw query, unwrapped — see profile.ts's fetchProfile for why. Embeds each
+ * project's technologies (every row, not SQL-limited — ProjectCard slices
+ * to the top few for display) so card lists don't need a second round trip
+ * per project; PostgREST orders the embedded rows by their own
+ * display_order the same way fetchProjectBySlug does.
+ */
 export async function fetchProjects(options: { featuredOnly?: boolean; limit?: number } = {}): Promise<Project[]> {
   const supabase = createStaticClient();
   let query = supabase
     .from("projects")
-    .select("id, slug, name, short_description, logo_url, cover_image_url, status, featured, display_order")
+    .select(
+      `id, slug, name, short_description, logo_url, cover_image_url, status, featured, display_order,
+       project_technologies ( id, name )`,
+    )
     .eq("published", true)
     .order("display_order", { ascending: true })
-    .order("name", { ascending: true });
+    .order("name", { ascending: true })
+    .order("display_order", { referencedTable: "project_technologies", ascending: true });
 
   if (options.featuredOnly) {
     query = query.eq("featured", true);
@@ -26,7 +40,11 @@ export async function fetchProjects(options: { featuredOnly?: boolean; limit?: n
     logDataError("getProjects", error);
     return [];
   }
-  return data ?? [];
+
+  return ((data ?? []) as unknown as ProjectRow[]).map(({ project_technologies, ...project }) => ({
+    ...project,
+    technologies: project_technologies,
+  }));
 }
 
 export const getProjects = unstable_cache(fetchProjects, ["projects"], {

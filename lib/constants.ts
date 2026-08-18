@@ -9,6 +9,7 @@ import type { NavItem } from "@/types/content";
 
 /** Anchor ids for the single-page public site's sections. */
 export const SECTION_IDS = {
+  hero: "hero",
   about: "about",
   skills: "skills",
   experience: "experience",
@@ -30,6 +31,29 @@ export const DEFAULT_NAV_ITEMS: NavItem[] = [
   { label: "Experience", href: `#${SECTION_IDS.experience}` },
   { label: "Contact", href: `#${SECTION_IDS.contact}` },
 ];
+
+/** Navbar wordmark shown if getProfile() returns null (e.g. the database is unreachable). */
+export const DEFAULT_WORDMARK = "Portfolio";
+
+/** Navbar's primary CTA — always points at the contact section, so it needs no content field of its own. */
+export const NAV_CTA = {
+  label: "Let's Talk",
+  href: `#${SECTION_IDS.contact}`,
+} as const;
+
+/**
+ * The one stable, never-changing public URL for resume downloads — every
+ * "Download Resume" CTA on the site (Hero, Contact, Footer) points here,
+ * never at a resume row's own `file_url` directly. `app/resume/route.ts`
+ * resolves whichever resume is currently `is_active` behind this fixed
+ * path, so a link already pasted into a job application keeps working
+ * after the admin uploads a new version — see that route for the actual
+ * resolution logic.
+ */
+export const RESUME_ROUTE = "/resume";
+
+/** Forced download filename for the resume route's Content-Disposition header — deliberately not derived from the stored file's own name, which is an internal Storage path, not a polished public-facing filename. */
+export const RESUME_DOWNLOAD_FILENAME = "Syed-Asif-Resume.pdf";
 
 /** Matches the Tailwind breakpoints declared in styles/tokens.css usage across components. */
 export const BREAKPOINTS = {

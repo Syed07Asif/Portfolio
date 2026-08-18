@@ -143,6 +143,19 @@
   --space-section-y: 6rem;
   --space-section-y-lg: 8rem;
   --space-container-x: 1.5rem;
+  /* Fixed header's rendered height — drives its own layout, main's top
+     offset, and each section's scroll-margin-top so anchor/hash navigation
+     lands below the header instead of underneath it. */
+  --header-height: 5rem;
+  /* Hero's target height on screens tall enough to afford it (desktop/large
+     tablet) — full viewport minus the fixed header. Only applied at `lg:`
+     and up; smaller screens let content size the hero naturally so CTAs
+     never get pushed below the fold. */
+  --hero-min-height: calc(100vh - var(--header-height));
+  /* Caps how tall a single media item gets inside the project gallery
+     lightbox, so a very tall/portrait image or video never pushes the
+     close button or caption off-screen. */
+  --lightbox-media-max-height: min(70vh, 640px);
 
   /* ---------------------------------------------------------------------
    * Border radius scale

@@ -55,7 +55,9 @@ type CardStaticProps = CardCommonProps & {
  * link or button inside; that creates two focusable targets with unclear
  * accessible names for one piece of content. If the card shows a title plus
  * other text, either let the title be the only visible link-like text or
- * pass an explicit `aria-label` summarising the card.
+ * pass an explicit `aria-label` summarising the card. The `hover` animation
+ * also plays on keyboard focus (`whileFocus` mirrors `whileHover`) so a
+ * card's hover treatment isn't mouse-only.
  */
 type CardLinkProps = CardCommonProps & {
   interactive: true;
@@ -95,6 +97,7 @@ export const Card = forwardRef<HTMLDivElement | HTMLAnchorElement | HTMLButtonEl
           ref={ref as React.Ref<HTMLAnchorElement>}
           href={href}
           whileHover={whileHover}
+          whileFocus={whileHover}
           className={cn(classes, interactiveClassName, "cursor-pointer")}
           {...anchorProps}
         >
@@ -110,6 +113,7 @@ export const Card = forwardRef<HTMLDivElement | HTMLAnchorElement | HTMLButtonEl
           ref={ref as React.Ref<HTMLButtonElement>}
           type="button"
           whileHover={whileHover}
+          whileFocus={whileHover}
           className={cn(classes, interactiveClassName, "cursor-pointer")}
           {...buttonProps}
         >

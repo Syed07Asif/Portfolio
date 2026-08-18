@@ -87,7 +87,12 @@ export type Education = Pick<
 
 // -- Projects -----------------------------------------------------------------
 
-/** Lean shape for lists/cards — getProjects(). */
+export type ProjectTechnology = Pick<
+  Tables<"project_technologies">,
+  "id" | "name" | "icon" | "display_order"
+>;
+
+/** Lean shape for lists/cards — getProjects(). `technologies` is every row (ProjectCard slices to the top few itself), not a SQL-limited subset. */
 export type Project = Pick<
   Tables<"projects">,
   | "id"
@@ -99,12 +104,9 @@ export type Project = Pick<
   | "status"
   | "featured"
   | "display_order"
->;
-
-export type ProjectTechnology = Pick<
-  Tables<"project_technologies">,
-  "id" | "name" | "icon" | "display_order"
->;
+> & {
+  technologies: Pick<ProjectTechnology, "id" | "name">[];
+};
 
 export type ProjectFeature = Pick<
   Tables<"project_features">,

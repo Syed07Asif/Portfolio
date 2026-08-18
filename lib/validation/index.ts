@@ -1,4 +1,5 @@
 export * from "./shared";
+export * from "./adminLogin";
 export * from "./profile";
 export * from "./skillCategory";
 export * from "./skill";

@@ -1,8 +1,8 @@
-import { Slot } from "@radix-ui/react-slot";
+import { Slot, Slottable } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2, type LucideIcon } from "lucide-react";
 import { forwardRef } from "react";
-import type { ButtonHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const iconButtonVariants = cva(
@@ -35,14 +35,17 @@ const iconSizeBySize = {
 } as const;
 
 export interface IconButtonProps
-  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "disabled">,
+  extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "disabled" | "children">,
     VariantProps<typeof iconButtonVariants> {
+  /** Render as the single child element (e.g. an anchor for an external link) instead of a <button>, merging IconButton's classes/behaviour onto it — the icon renders inside it. */
   asChild?: boolean;
   loading?: boolean;
   disabled?: boolean;
   icon: LucideIcon;
   /** Required — an icon-only control has no visible text, so this is its only accessible name. */
   "aria-label": string;
+  /** Only meaningful with `asChild` — the element to render instead of <button>. */
+  children?: ReactNode;
 }
 
 /**
@@ -51,12 +54,27 @@ export interface IconButtonProps
  */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   (
-    { className, variant, size, asChild = false, loading = false, disabled = false, icon: Icon, ...props },
+    {
+      className,
+      variant,
+      size,
+      asChild = false,
+      loading = false,
+      disabled = false,
+      icon: Icon,
+      children,
+      ...props
+    },
     ref,
   ) => {
     const Comp = asChild ? Slot : "button";
     const isDisabled = disabled || loading;
     const resolvedSize = size ?? "md";
+    const iconEl = loading ? (
+      <Loader2 className={cn(iconSizeBySize[resolvedSize], "animate-spin")} aria-hidden="true" />
+    ) : (
+      <Icon className={iconSizeBySize[resolvedSize]} aria-hidden="true" />
+    );
 
     return (
       <Comp
@@ -68,11 +86,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         tabIndex={asChild && isDisabled ? -1 : undefined}
         {...props}
       >
-        {loading ? (
-          <Loader2 className={cn(iconSizeBySize[resolvedSize], "animate-spin")} aria-hidden="true" />
-        ) : (
-          <Icon className={iconSizeBySize[resolvedSize]} aria-hidden="true" />
-        )}
+        {asChild ? <Slottable>{children}</Slottable> : iconEl}
+        {asChild ? iconEl : null}
       </Comp>
     );
   },

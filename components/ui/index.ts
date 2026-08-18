@@ -22,3 +22,4 @@ export { Skeleton } from "./Skeleton";
 export type { SkeletonProps, SkeletonShape } from "./Skeleton";
 export { Tag } from "./Tag";
 export type { TagProps } from "./Tag";
+export { Toaster } from "./Toaster";

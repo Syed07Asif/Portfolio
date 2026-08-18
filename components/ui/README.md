@@ -2,7 +2,7 @@
 
 Generic, content-agnostic UI primitives for the **public site**. Every section in `components/sections` composes these — no section defines its own button, card, badge, etc.
 
-Primitives: `Button`, `IconButton`, `Card`, `Section`, `Container`, `SectionHeading`, `Badge`, `Tag`, `Divider`, `Avatar`, `EmptyState`, `Skeleton`. Import from the barrel (`@/components/ui`) or a specific file.
+Primitives: `Button`, `IconButton`, `Card`, `Section`, `Container`, `SectionHeading`, `Badge`, `Tag`, `Divider`, `Avatar`, `EmptyState`, `Skeleton`, `Toaster`. Import from the barrel (`@/components/ui`) or a specific file.
 
 Rules for anything added here:
 - No data fetching — content arrives as props.

@@ -10,7 +10,11 @@ values (
   'Syed Asif',
   'Analytics & ML Engineer',
   'I build data pipelines and machine learning systems that turn raw data into decisions.',
-  'I''m an Analytics & ML Engineer focused on the full lifecycle of data products: ingesting and modeling data, building and deploying machine learning systems, and turning the results into dashboards and tools that people actually use. I care most about work that holds up in production, not just in a notebook.',
+  'I''m a B.Tech graduate in Artificial Intelligence & Data Science, and what pulled me into this field wasn''t a single algorithm — it was realizing how much a model''s output could change a real decision once it left the notebook. That gap between "the metrics looked good" and "this is actually trustworthy in production" is what I''ve spent my degree, and every project since, trying to close.
+
+My work sits at the intersection of data engineering and machine learning: pipelines that hold up under real data, models that generalize past their training set, and dashboards people actually open a second time. I''m especially drawn to the less glamorous middle of the ML lifecycle — feature stability, monitoring, the handoff from experiment to something running unattended — because that''s usually where value is won or lost.
+
+Right now I''m focused on growing as an Analytics & ML Engineer: building the engineering discipline that keeps machine learning systems reliable, while staying close enough to the analytics side to know whether a model is actually solving the right problem. Longer term, I want to be the person a team trusts to take an ML idea from a promising notebook to something dependable enough to run in production — and to keep learning the parts of this field no single course ever fully covers.',
   '/images/avatar.jpg',
   'India',
   'Open to opportunities',
@@ -48,7 +52,7 @@ values (
   'Analytics & ML Engineer',
   '/images/companies/example-analytics-co.png',
   'Remote',
-  'full_time',
+  'Full-time',
   '2023-01-01',
   null,
   true,
@@ -66,12 +70,12 @@ insert into public.education
 values (
   'Example University',
   'B.Tech',
-  'Computer Science',
+  'Artificial Intelligence & Data Science',
   '/images/institutions/example-university.png',
   '2019-08-01',
   '2023-05-31',
   '8.5 CGPA',
-  'Coursework focused on data structures, algorithms, statistics, and machine learning.',
+  'Coursework spanning machine learning, statistics, data structures & algorithms, and database systems, capped off with a final-year project applying ML to a real dataset end-to-end.',
   'https://example.edu',
   0,
   true

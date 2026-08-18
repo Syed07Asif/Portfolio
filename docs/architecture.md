@@ -292,6 +292,46 @@ through some path that forgot to call `revalidateTag` (there shouldn't be
 one, but the fallback costs nothing); tag-based invalidation is what makes a
 publish feel instant.
 
+### Per-route revalidation: `/projects/[slug]`
+
+The caching strategy above covers `lib/data` — a cache of *query results*.
+A statically-generated dynamic route has a second, separate cache layer on
+top of that: Next's Full Route Cache, which stores the *rendered page*
+itself. `app/projects/[slug]/page.tsx` is the first route in this project
+where that second layer actually matters, so it's worth spelling out how
+the two interact to satisfy "a newly published project goes live at its
+own URL with no redeploy":
+
+1. **`generateStaticParams()` (calling `getProjectSlugs()`) pre-renders
+   every currently-published project at build time.** Fast, fully static
+   HTML for anything that existed at the last build.
+2. **`dynamicParams` is left at its Next.js default (`true`) — not
+   exported/overridden anywhere in the route.** This is the load-bearing
+   part: a slug that *doesn't* appear in `generateStaticParams()`'s list
+   (a project published after the last build) isn't a 404. Next falls
+   through to rendering the page on demand for that request, calling the
+   exact same `getProjectBySlug()` — which either returns the new project
+   (page renders normally and gets cached from then on) or `null`
+   (`notFound()` fires, exactly as it would for a typo'd slug). A brand
+   new project is live the moment it's published and requested once — no
+   build, no redeploy.
+3. **`export const revalidate = 3600` on the page puts the *pre-rendered*
+   pages into ISR** — without it, statically generated pages are cached
+   indefinitely (until the next build), so an *edit* to an
+   already-published project (new description, swapped screenshot, ...)
+   would never appear on its already-generated page no matter how long you
+   waited. `3600` matches `lib/data`'s own `revalidate` so both layers go
+   stale on the same schedule rather than one masking the other.
+4. **Once the admin panel exists**, its publish/edit action calling
+   `revalidateTag(CACHE_TAGS.projects)` (see above) invalidates the data
+   layer immediately; pairing that with Next's `revalidatePath("/projects/
+   [slug]")` (or tag-based route revalidation, if the admin action already
+   knows the specific slug) would make step 3's up-to-an-hour wait instant
+   too, the same way it already does for the data cache. That pairing
+   isn't wired up yet — there's no admin write path to call it from — but
+   the route is already structured so adding it later is a one-line change
+   in that future server action, not a change to this page.
+
 ### Proving the data layer works
 
 [`tests/lib/data/smoke.ts`](../tests/lib/data/smoke.ts) calls every
