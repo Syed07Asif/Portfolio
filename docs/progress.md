@@ -53,16 +53,21 @@ cleanup.
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`.
-- **Latest commit:** `56b789a` — "Phases 7-18: full public site, admin
-  auth/shell, and shared admin infrastructure," pushed to `origin/develop`
-  (148 files, squashing everything built since `72f3b5a`/Phase 6 into one
-  commit since it had all been sitting uncommitted across many sessions —
-  `git show 56b789a --stat` for the full file list). `docs/progress.md`
-  and `CLAUDE.md` were already tracked as of `6b0b2f5` ("Add
-  docs/progress.md as a cross-session build log," Phase 6-era, one commit
-  before `72f3b5a` in history despite the name — it's a docs-only commit
-  layered on top). This very edit (recording the hash above) is a small
-  follow-up commit on top of `56b789a`, made *after* confirming the push
+- **Latest commit:** `959e204` — "Phase 19: Profile, Skills, and
+  Experience admin modules," pushed to `origin/develop` (37 files —
+  `git show 959e204 --stat` for the full list; full reasoning in the
+  commit message and this file's own Phase 19 log entry below). Before
+  that, `56b789a` — "Phases 7-18: full public site, admin auth/shell, and
+  shared admin infrastructure" (148 files, squashing everything built
+  since `72f3b5a`/Phase 6 into one commit since it had all been sitting
+  uncommitted across many sessions — `git show 56b789a --stat` for that
+  file list), followed by `6105110`, a docs-only follow-up recording that
+  hash in this file. `docs/progress.md` and `CLAUDE.md` were already
+  tracked as of `6b0b2f5` ("Add docs/progress.md as a cross-session build
+  log," Phase 6-era, one commit before `72f3b5a` in history despite the
+  name — it's a docs-only commit layered on top). This very edit
+  (recording the `959e204` hash above) is itself a small follow-up
+  commit on top of `959e204`, made *after* confirming the push
   succeeded — expect `git log --oneline` to show it as the tip. If
   `git status` isn't clean when a new session checks, something changed
   since this was written; read the diff before assuming it's safe to
@@ -73,28 +78,43 @@ cleanup.
   deleted and the `(site)` copies as new/untracked rather than a detected
   rename, since they were moved with plain `mv`, not `git mv`; functionally
   identical, just not recorded as a rename in the diff.
-- **Local Supabase stack: currently running on this machine**, now with the
-  Auth service included — Docker containers
-  `supabase_db_syed-asif-portfolio`, `supabase_rest_syed-asif-portfolio`,
-  `supabase_auth_syed-asif-portfolio`, `supabase_kong_syed-asif-portfolio`
-  (`supabase_auth_*` is new as of Phase 17; every phase before it only
-  needed Postgres + PostgREST + Kong — see that phase's log entry for why
-  Auth had to be added and how, since it wasn't a simple `supabase start`).
-  Independent of any particular chat session — very likely still up in a
-  new session on this same machine (`docker ps` to confirm). The database
-  currently holds exactly `supabase/seed.sql`'s content plus one
+- **Local Supabase stack: stopped as of the end of the session that wrote
+  this update** (`docker info` failed with "failed to connect to the
+  docker API... The system cannot find the file specified" — Docker
+  Desktop's engine itself wasn't reachable, not just the containers being
+  down; confirmed at the very end of the Phase 19 session, after
+  everything else in this file was already verified working earlier in
+  that same session). A new session needs to launch Docker Desktop and
+  wait for `docker info` to succeed before anything Supabase-related will
+  work — see "To stand up the local stack on a fresh machine/session"
+  below. Once it's up, the containers are `supabase_db_syed-asif-portfolio`,
+  `supabase_rest_syed-asif-portfolio`, `supabase_auth_syed-asif-portfolio`,
+  `supabase_kong_syed-asif-portfolio` (`supabase_auth_*` is new as of
+  Phase 17; every phase before it only needed Postgres + PostgREST + Kong
+  — see that phase's log entry for why Auth had to be added and how,
+  since it wasn't a simple `supabase start`). The database holds exactly
+  `supabase/seed.sql`'s content (verified row-for-row at the end of the
+  Phase 19 session — one row each in `profile`, `skill_categories`,
+  `skills`, `experience`, `education`, matching the seed) plus one
   Phase-17-created **local test admin account** (`test-admin@example.com`
   / `Test-Admin-Pass-123!` — a real Supabase Auth user with a row in
   `private.admins`, local-only, not a secret worth protecting since it's a
   throwaway Docker Postgres instance; kept, not cleaned up, since a future
   session building the actual content editors will want a working admin
-  login to test against without re-deriving this). Every phase's *content*
-  test rows (extra projects, experience entries, skills, etc.) were
-  inserted live for verification and then removed again, never left
-  behind. `.env.local` exists and is correctly configured (real, working
+  login to test against without re-deriving this) — assuming Docker's
+  volumes survived whatever stopped the engine; if `docker ps -a` shows no
+  Supabase containers at all after starting Docker Desktop back up, a full
+  `npx supabase start` + `npx supabase db reset` is needed instead of just
+  waiting for existing containers to resume, and the admin account will
+  need re-creating per Phase 17's log entry. Every phase's *content* test
+  rows (extra projects, experience entries, skills, etc.) were inserted
+  live for verification and then removed again, never left behind.
+  `.env.local` exists and is correctly configured (real, working
   anon/service_role keys — **regenerated during Phase 17**, see that
   phase's log entry and the JWT note below — old keys copied from before
-  Phase 17 will no longer work).
+  Phase 17 will no longer work) — but re-verify against `npx supabase
+  status -o env` if the stack needed a fresh `start` rather than just
+  resuming, since that regenerates the JWT signing material.
 - **Next.js dev server:** tied to this tool session's process management
   (started via the `portfolio-dev` launch config), so a brand new chat
   session likely needs to start it again — `preview_start` with `{"name":
