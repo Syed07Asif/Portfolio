@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Control, FieldValues, Path } from "react-hook-form";
 import { useWatch } from "react-hook-form";
 import { CheckIcon, Loader2Icon, XIcon } from "lucide-react";
+import { slugify } from "@/lib/utils";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/admin/ui/form";
 import { Input } from "@/components/admin/ui/input";
 
@@ -16,14 +17,6 @@ export interface SlugFieldProps<TValues extends FieldValues> {
   /** Live duplicate check, scoped to the entity by the caller (e.g. "is any *other* project already using this slug") — this field has no table/entity knowledge of its own. */
   checkAvailability?: (slug: string) => Promise<boolean>;
   disabled?: boolean;
-}
-
-function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 type CheckState = "idle" | "checking" | "available" | "taken";
@@ -48,21 +41,40 @@ function SlugControl({
   checkAvailability?: (slug: string) => Promise<boolean>;
 }) {
   const [isManual, setIsManual] = useState(false);
-  const [prevSourceValue, setPrevSourceValue] = useState(sourceValue);
   const [checkState, setCheckState] = useState<CheckState>(() =>
     checkAvailability && value ? "checking" : "idle",
   );
   const [prevCheckedValue, setPrevCheckedValue] = useState(value);
+  // Lazily initialized once, from whatever `sourceValue` already is at
+  // mount — not a plain boolean "have we run yet" flag. A boolean flag
+  // breaks under React Strict Mode's dev-only double-invoke-on-mount
+  // behavior: the ref flips to "already ran" on the first of the two
+  // simulated mount passes, so the second pass no longer skips and fires
+  // a spurious `onChange` derived from a `sourceValue` that never
+  // actually changed — caught live editing a draft project with a blank
+  // name (Phase 20): it silently wiped an already-saved slug back to ""
+  // on page load, before the admin touched anything. Comparing against
+  // the *actual last-seen value* is correct regardless of how many times
+  // the effect happens to run for the same underlying value.
+  const prevSourceValueRef = useRef(sourceValue);
 
   // Auto-derive from the source field as it changes, unless the admin has
-  // taken manual control — adjusted during render (comparing against a
-  // mirrored previous value), not in an effect, per React's guidance
-  // against synchronous setState-in-effect (same pattern LoginForm and
-  // Navbar already use elsewhere in this codebase).
-  if (sourceValue !== prevSourceValue) {
-    setPrevSourceValue(sourceValue);
-    if (!isManual) onChange(slugify(sourceValue));
-  }
+  // taken manual control. This has to run in an effect, not adjusted
+  // directly during render the way `checkState` below is — React's "adjust
+  // state during render" pattern only covers a component's *own* local
+  // state; `onChange` here is the *parent* Controller's setter (passed
+  // down as a prop), and calling it mid-render produces a real "Cannot
+  // update a component while rendering a different component" warning —
+  // caught live the first time this field's `checkAvailability` prop was
+  // actually wired up for real (ProjectForm, Phase 20), which was also the
+  // first time anything exercised this exact code path thoroughly enough
+  // to surface it.
+  useEffect(() => {
+    const changed = sourceValue !== prevSourceValueRef.current;
+    prevSourceValueRef.current = sourceValue;
+    if (changed && !isManual) onChange(slugify(sourceValue));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-derive when sourceValue itself changes; isManual/onChange are read fresh via closure, not tracked as re-trigger conditions
+  }, [sourceValue]);
 
   // Same fix, applied to the "start checking" transition: flip to
   // "checking" (or back to "idle" if there's nothing to check) the instant

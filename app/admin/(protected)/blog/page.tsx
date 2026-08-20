@@ -1,13 +1,23 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
-import { ComingSoon } from "@/components/admin/ComingSoon";
 import { getSiteSettings } from "@/lib/data";
+import { fetchBlogPostsForAdmin } from "@/lib/data/blogPosts";
+import { PageHeader } from "@/components/admin/PageHeader";
+import { BlogPostTable } from "@/components/admin/blog/BlogPostTable";
+import { AdminTableSkeleton } from "@/components/admin/table/AdminTableSkeleton";
 
 export const metadata: Metadata = { title: "Blog" };
 
+async function BlogPostTableSection() {
+  const items = await fetchBlogPostsForAdmin();
+  return <BlogPostTable items={items} />;
+}
+
 /**
- * The sidebar disables this link when blog_enabled is off, but a direct
- * URL visit bypasses that UI-level gate — so this page checks the same
- * flag itself rather than trusting the sidebar's disabled state alone.
+ * The sidebar disables this link when blog_enabled is off, but a direct URL
+ * visit bypasses that UI-level gate — so this page (and new/, [id]/edit/)
+ * each check the same flag themselves rather than trusting the sidebar's
+ * disabled state alone.
  */
 export default async function AdminBlogPage() {
   const siteSettings = await getSiteSettings();
@@ -24,5 +34,16 @@ export default async function AdminBlogPage() {
     );
   }
 
-  return <ComingSoon section="Blog" />;
+  return (
+    <div>
+      <PageHeader
+        title="Blog"
+        description="Blog posts — editor only. The public blog stays off regardless."
+        action={{ label: "Add post", href: "/admin/blog/new" }}
+      />
+      <Suspense fallback={<AdminTableSkeleton columns={3} rows={4} />}>
+        <BlogPostTableSection />
+      </Suspense>
+    </div>
+  );
 }

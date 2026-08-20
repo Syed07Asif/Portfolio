@@ -3,7 +3,7 @@ import {
   dateSchema,
   displayOrderSchema,
   optionalDateSchema,
-  optionalImageUrlSchema,
+  optionalAssetUrlSchema,
   optionalUrlSchema,
   publishedSchema,
   requiredTextSchema,
@@ -14,7 +14,7 @@ export const experienceSchema = z
   .object({
     company: requiredTextSchema(200),
     role: requiredTextSchema(200),
-    company_logo_url: optionalImageUrlSchema,
+    company_logo_url: optionalAssetUrlSchema,
     location: textSchema(200).optional().nullable(),
     employment_type: textSchema(100).optional().nullable(),
     start_date: dateSchema,

@@ -41,6 +41,22 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Lowercase, hyphen-separated slug derivation — shared by SlugField (live,
+ * client-side, as the admin types a name) and lib/actions/projects.ts
+ * (server-side, deriving a fallback slug when the admin leaves it blank on
+ * a draft save). Matches the shape `lib/validation/shared.ts`'s
+ * `slugSchema` regex accepts and what the database's own
+ * `public.slugify()` SQL function produces.
+ */
+export function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
  * Resolves a nav/footer href that may be a same-page anchor (`#about`) so it
  * still works from routes other than the homepage — e.g. `#about` becomes
  * `/#about` from a project detail page instead of doing nothing. Absolute
@@ -92,6 +108,23 @@ const MONTH_NAMES = [
 function parseYearMonth(dateStr: string): { year: number; month: number } {
   const [year, month] = dateStr.split("-").map(Number);
   return { year: year!, month: month! };
+}
+
+/**
+ * "Mon D, YYYY" (e.g. "Aug 17, 2026") for a full `timestamptz` value — an
+ * admin list's `updated_at` column, unlike `formatMonthYear` below, which
+ * only handles a plain "YYYY-MM-DD" date column. Deliberately not
+ * `toLocaleDateString()`: that formats using the *rendering environment's*
+ * locale, which differs between the server's render pass and the
+ * browser's own locale ("Aug 17, 2026" vs. "17 Aug 2026") and produces a
+ * real hydration mismatch — hit live building the Projects admin table
+ * (Phase 20), the same class of "don't let non-deterministic formatting
+ * differ between server and client" trap this file's date helpers already
+ * guard against elsewhere.
+ */
+export function formatAdminDate(iso: string): string {
+  const date = new Date(iso);
+  return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
 }
 
 /** Formats a "YYYY-MM-DD" date as "Mon YYYY", e.g. "Jun 2023". */

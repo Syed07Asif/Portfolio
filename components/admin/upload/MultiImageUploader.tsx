@@ -188,9 +188,18 @@ export function MultiImageUploader({ value, onChange, bucket, recordId, label = 
         className="sr-only"
         disabled={disabled}
         onChange={(event) => {
-          const files = event.target.files;
+          // `event.target.files` is a *live* FileList tied to the input —
+          // resetting `.value` below empties this same object in place
+          // (confirmed live: capturing the FileList reference and later
+          // clearing `.value` left `.length` at 0 by the time it was
+          // checked), so `handleFiles` silently never ran. `Array.from`
+          // copies out the actual File objects — stable, immutable blobs
+          // unaffected by the input's own selection being cleared — before
+          // that reset happens. Found live building Phase 20's
+          // ProjectMediaManager, which copied this exact (broken) pattern.
+          const files = Array.from(event.target.files ?? []);
           event.target.value = "";
-          if (files && files.length > 0) void handleFiles(files);
+          if (files.length > 0) void handleFiles(files);
         }}
       />
     </div>

@@ -144,4 +144,9 @@ export const STORAGE_BUCKETS = {
     maxSizeBytes: 5 * 1024 * 1024,
     allowedMimeTypes: ["image/png", "image/jpeg", "image/webp"],
   },
+  settings: {
+    id: "settings",
+    maxSizeBytes: 5 * 1024 * 1024,
+    allowedMimeTypes: ["image/png", "image/jpeg", "image/webp"],
+  },
 } as const;

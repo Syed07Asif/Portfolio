@@ -21,7 +21,13 @@ behind a specific phase if this summary isn't enough.
 
 ## Where things stand
 
-**Phases 1–19 are done and verified.** Phase 18 ("shared admin
+**Phases 1–21 are done and verified. The admin panel is complete** — every
+sidebar destination is now a real editor; no `ComingSoon` placeholder pages
+remain (`components/admin/ComingSoon.tsx` itself is now unused and could be
+deleted whenever someone is tidying). Phase 21's own log entry below has the
+full narrative, including two real bugs found live.
+
+Phase 18 ("shared admin
 infrastructure") had one earlier, failed attempt — removed entirely and
 rebuilt from scratch in a second attempt, which succeeded. All six
 required operations (create, edit, publish, unpublish, delete, reorder)
@@ -38,13 +44,47 @@ verified the same way — full narrative in this file's Phase 19 log entry
 below and in content-management.md's "Two more real bugs" section; every
 table involved (`profile`, `skill_categories`, `skills`, `experience`) is
 back to exactly `supabase/seed.sql`'s original content after test-row
-cleanup.
+cleanup. **Phase 20** (the Projects admin module — CLAUDE.md's "most
+important admin module") is done and verified the same way; three real
+bugs were found and fixed live (two of them latent in already-shipped
+Phase 18/19 shared code, only surfaced because Phase 20 was the first to
+actually exercise those exact code paths for real) — full narrative in
+this file's Phase 20 log entry below and in
+content-management.md's "Real bugs found and fixed while proving Phase
+20" section. The `projects` table (plus `project_technologies`,
+`project_features`, `project_media`, and the `projects` Storage bucket)
+is back to exactly `supabase/seed.sql`'s original content after test-row
+cleanup. **Phase 21** (Certifications, Achievements, Contact, Resume,
+Settings, draft-mode preview, and the minimal Blog module — the phase that
+completes the admin panel) is done and verified the same way; two real bugs
+were found and fixed live, one of them a repeat of Phase 19's
+relative-asset-path validation bug across five *more* schemas — full
+narrative in this file's Phase 21 log entry below and in
+content-management.md's "Phase 21 additions to shared infrastructure" and
+"Two real bugs, found live while building Phase 21" sections. Every table
+is back to exactly `supabase/seed.sql`'s content (verified row-for-row —
+one row each across all 15 tables, zero objects in every Storage bucket)
+after test-row cleanup. **Phases 20 and 21's work is uncommitted** as of
+this writing — see `git status` before assuming otherwise.
+
+- **Two new migrations were added in Phase 21** and have been applied
+  locally via `npx supabase db reset`:
+  `20260818090000_resume_active_swap_function.sql` (the atomic
+  `public.set_active_resume(uuid)` swap) and
+  `20260818091500_settings_storage_bucket.sql` (a `settings` Storage bucket
+  for the default OG image, plus the four `storage.objects` policies dropped
+  and recreated with it included). `types/database.ts` was regenerated
+  (`npx supabase gen types typescript --local`) to pick up the new RPC.
+  **Note `db reset` wipes `auth.users` and `private.admins`**, so the
+  local test admin account had to be recreated afterward — see the account
+  bullet below and Phase 17's log entry for the exact steps.
 
 - **Branch:** `develop` (all phase work happens here; `main` is still just
   the Phase 1 scaffold — nothing has been merged up yet). Tracks
   `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
-- **Dev server:** stopped at the end of the session that wrote this —
-  it does not persist between sessions/restarts regardless. Start with
+- **Dev server:** running as of the end of the session that wrote this
+  (`portfolio-dev` launch config, port 3000) — it does not persist between
+  sessions/restarts regardless, so a new session still needs to start it:
   `preview_start`/`{"name": "portfolio-dev"}` (or `npm run dev`); if
   anything looks stale afterward, `rm -rf .next` first (see the Turbopack
   cache notes below).
@@ -52,7 +92,7 @@ cleanup.
   `package.json`): `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
-  `textarea.tsx`.
+  `textarea.tsx`. No new dependencies were needed for Phase 20.
 - **Latest commit:** `959e204` — "Phase 19: Profile, Skills, and
   Experience admin modules," pushed to `origin/develop` (37 files —
   `git show 959e204 --stat` for the full list; full reasoning in the
@@ -78,25 +118,31 @@ cleanup.
   deleted and the `(site)` copies as new/untracked rather than a detected
   rename, since they were moved with plain `mv`, not `git mv`; functionally
   identical, just not recorded as a rename in the diff.
-- **Local Supabase stack: stopped as of the end of the session that wrote
-  this update** (`docker info` failed with "failed to connect to the
-  docker API... The system cannot find the file specified" — Docker
-  Desktop's engine itself wasn't reachable, not just the containers being
-  down; confirmed at the very end of the Phase 19 session, after
-  everything else in this file was already verified working earlier in
-  that same session). A new session needs to launch Docker Desktop and
-  wait for `docker info` to succeed before anything Supabase-related will
-  work — see "To stand up the local stack on a fresh machine/session"
-  below. Once it's up, the containers are `supabase_db_syed-asif-portfolio`,
+- **Local Supabase stack: running as of the end of the session that wrote
+  this update**, and — new as of Phase 20 — running **with `storage-api`
+  included**, not the historically-minimal Postgres+PostgREST+Auth+Kong
+  set. Real file uploads (project logos, cover images, gallery items) need
+  a real Storage backend to hit, which the project's long-standing minimal
+  `--exclude` flag set (documented below and in `supabase/README.md`)
+  deliberately excludes — Phase 20 was the first phase whose own admin
+  module actually needed to exercise uploads against a real backend to
+  verify itself (Education/Experience/Profile's `ImageUploader` usage in
+  Phases 18–19 was built and reviewed but never actually proven against a
+  live Storage service either, for the same reason). Docker Desktop isn't
+  always already running when a session starts — launch it and wait for
+  `docker info` to succeed first; see "To stand up the local stack on a
+  fresh machine/session" below, now updated to include `storage-api`.
+  Once it's up, the containers are `supabase_db_syed-asif-portfolio`,
   `supabase_rest_syed-asif-portfolio`, `supabase_auth_syed-asif-portfolio`,
-  `supabase_kong_syed-asif-portfolio` (`supabase_auth_*` is new as of
-  Phase 17; every phase before it only needed Postgres + PostgREST + Kong
-  — see that phase's log entry for why Auth had to be added and how,
-  since it wasn't a simple `supabase start`). The database holds exactly
+  `supabase_kong_syed-asif-portfolio`, and (as of Phase 20)
+  `supabase_storage_syed-asif-portfolio`. The database holds exactly
   `supabase/seed.sql`'s content (verified row-for-row at the end of the
-  Phase 19 session — one row each in `profile`, `skill_categories`,
-  `skills`, `experience`, `education`, matching the seed) plus one
-  Phase-17-created **local test admin account** (`test-admin@example.com`
+  Phase 20 session — one row each in `profile`, `skill_categories`,
+  `skills`, `experience`, `education`, `projects` — plus one row each in
+  `project_technologies`/`project_features`/`project_media`, matching the
+  seed — and zero objects in every Storage bucket except whatever the seed
+  itself references) plus one Phase-17-created **local test admin
+  account** (`test-admin@example.com`
   / `Test-Admin-Pass-123!` — a real Supabase Auth user with a row in
   `private.admins`, local-only, not a secret worth protecting since it's a
   throwaway Docker Postgres instance; kept, not cleaned up, since a future
@@ -133,20 +179,29 @@ cleanup.
   Desktop must actually be *running* first (`docker info` — if it fails,
   launch `Docker Desktop.exe` and wait; it's not always already up even
   though it's installed). Then `npx supabase start --exclude
-  storage-api,studio,logflare,vector,imgproxy,edge-runtime,mailpit,supavisor,realtime,postgres-meta`
-  (note: **Auth/gotrue is now included**, unlike the flag set Phases 1–16
-  used — see [supabase/README.md](../supabase/README.md) and Phase 17's log
-  entry for why) and `npx supabase db reset`. **Do not hand-type a
-  "well-known local demo" anon/service_role JWT from memory** — the fixed
-  pair some docs/tutorials quote does not match this CLI version's actual
-  local `jwt_secret` and fails with `PGRST301 "None of the keys was able to
-  decode the JWT"` in a way that's easy to misdiagnose as an RLS problem.
-  Get the real values straight from the CLI instead: `npx supabase status
-  -o env` after `start` prints the current, definitely-correct
-  `ANON_KEY`/`SERVICE_ROLE_KEY` for whatever's actually running — trust
-  that output over anything previously saved in `.env.local`, since a
-  `supabase stop` + `start` cycle (needed in Phase 17 to add the Auth
-  service) regenerates these.
+  studio,logflare,vector,imgproxy,edge-runtime,mailpit,supavisor,realtime,postgres-meta`
+  (note: **Auth/gotrue and `storage-api` are now both included**, unlike
+  the flag set Phases 1–16 used — Auth was added in Phase 17, `storage-api`
+  in Phase 20 specifically to verify real file uploads live; see
+  [supabase/README.md](../supabase/README.md), which still documents the
+  *original* fully-minimal flag set as a fallback if `storage-api` proves
+  too resource-heavy/flaky on a given machine — Projects' admin module is
+  the only thing that currently needs it) and `npx supabase db reset`.
+  **Do not hand-type a "well-known local demo" anon/service_role JWT from
+  memory** — the fixed pair some docs/tutorials quote does not match this
+  CLI version's actual local `jwt_secret` and fails with `PGRST301 "None
+  of the keys was able to decode the JWT"` in a way that's easy to
+  misdiagnose as an RLS problem. Get the real values straight from the CLI
+  instead: `npx supabase status -o env` after `start` prints the current,
+  definitely-correct `ANON_KEY`/`SERVICE_ROLE_KEY` for whatever's actually
+  running — trust that output over anything previously saved in
+  `.env.local`. **This *can* regenerate the JWT signing material** (it did
+  in Phase 17, when `stop`+`start` was needed to add a service for the
+  first time) **but doesn't always** — Phase 20's `stop`+`start` cycle
+  (adding `storage-api`) restored from Docker's own backup and kept the
+  exact same keys already in `.env.local`, confirmed via `npx supabase
+  status -o env` rather than assumed either way. Always re-verify after a
+  `stop`/`start` cycle; never assume which outcome you got.
 - **Environment notes specific to this machine:** Windows, PowerShell is
   the working shell (Bash tool exists but has PATH/quoting quirks — prefer
   PowerShell for npm/node commands). Node.js and Docker Desktop were not
@@ -1304,6 +1359,416 @@ interaction worked normally. Worth checking `__reactProps$` presence
 first the next time something inside a Suspense boundary seems
 inexplicably inert, rather than assuming new code broke it.
 
+**Phase 20 — Projects, the most important admin module (done, verified
+live).** The target workflow from the brief — Projects → Add Project →
+enter information → upload logo → add technologies → add features →
+upload screenshots → add GitHub/demo links → preview → publish — is what
+this phase built toward literally, per CLAUDE.md's Phase 20 instructions.
+Projects is structurally the biggest entity yet: one parent table plus
+three child tables edited together on one screen, a genuinely new
+draft/publish distinction (only Projects has fields that are optional to
+*save* but required to *publish*), and the first entity to actually
+exercise several pieces of shared infrastructure that had been built but
+never proven end-to-end.
+
+**Draft safety, built as a schema-level distinction, not a UI
+convention**: `lib/validation/project.ts`'s `projectSchema`/
+`projectFormSchema` don't require `name`/`slug`/`short_description` at
+the field level at all — a `.superRefine` enforces those three *only*
+when `published === true`, so the exact same schema validates a bare
+draft save and a publish attempt correctly. Verified live, not just
+reasoned about: clicked **Create** on a completely untouched, all-blank
+form and it saved successfully (`lib/actions/projects.ts`'s
+`resolveSlug()` fills in a slug server-side — from the name if there is
+one, otherwise a short random fallback — since the database column is
+still `NOT NULL UNIQUE` and can't stay blank the way a draft's other
+fields can); then confirmed the *opposite* case — toggling **Published**
+on that same still-blank draft via the list's inline switch — correctly
+failed with "Add a name, a short description before publishing." (the
+slug was already non-empty from the auto-fallback) and the row stayed
+unpublished in Postgres. `toggleProjectPublished` re-checks these three
+fields itself, since the inline list-page toggle doesn't go through the
+form's own schema.
+
+**Child tables (`project_technologies`/`project_features`/
+`project_media`) are a full replace on every save**
+(`writeProjectChildren()` in `lib/actions/projects.ts`: delete every
+existing row for the project, then bulk-insert whatever the form
+currently holds, `display_order` assigned from array position) — simple
+and correct specifically because Storage cleanup for a *removed* gallery
+item already happens independently and immediately, client-side, the
+moment the admin removes it in the new `ProjectMediaManager`, so this
+function only ever has to reconcile rows, never orphan files. Verified
+live: technologies (ordered chips via `TagInputField`), a feature
+(`RepeatableGroupField`, title + description), and a gallery image
+(`ProjectMediaManager`) all round-tripped correctly through Postgres in
+both create and edit.
+
+**Two shared-infrastructure pieces got their first real proof, and one
+needed a genuinely new component**: `SlugField`'s `checkAvailability` prop
+(`checkProjectSlugAvailability` in `lib/actions/projects.ts`, scoped to
+"any *other* project with this slug") and `RepeatableGroupField` (the
+Features tab) were both flagged as built-but-unproven since Phase 18/19 —
+both now proven live. `MultiImageUploader`, also flagged unproven, turned
+out not to fit: `project_media` rows carry real per-item metadata
+(`media_type`, `title`, `alt_text`, `caption`), which a plain
+ordered-array-of-URLs uploader can't represent — so Projects uses a new,
+dedicated `ProjectMediaManager` instead, built from the same proven
+primitives (`uploadFile`/`removeFiles`/`buildStoragePath`, dnd-kit reorder
+with a fixed `DndContext` id). Verified live: upload with a real per-item
+media-type default derived from the file's MIME type, missing-alt-text
+warning shown/cleared correctly, drag-to-reorder, and delete-with-
+confirmation that also removed the real Storage object (confirmed via
+`storage.objects` directly, both before and after).
+
+**The slug-change-on-a-published-project requirement was answered
+structurally, not with a migration step**: every upload (logo, cover
+image, gallery) lives at `projects/{project.id}/...` — keyed by the row's
+own id, never its slug (the same `{bucket}/{recordId}/{uuid}.{ext}`
+convention every entity's uploads already use) — so renaming a project's
+slug can never leave media pointing at a dead path, and there is nothing
+to migrate. `ProjectForm` still shows a loud, explicit warning banner when
+editing a *published* project and the slug field's current value differs
+from what's saved, since the slug is also the project's live public URL
+(`/projects/<slug>`) and changing it breaks any link already shared to
+it — verified live by editing the seed project's slug and confirming the
+banner appeared, then reverting without saving.
+
+**The "preview" step needed a real route, not a UI affordance**: the
+public `/projects/[slug]` page always filters `published = true`
+(`getProjectBySlug`), so an admin previewing a draft would just get a
+404 there. `app/admin/(protected)/projects/[id]/preview/page.tsx` reuses
+the public detail page's exact presentational pieces (`ProjectCardImage`,
+`ProjectStatusBadge`, `ProjectMediaGallery`, the same Overview/context-
+block/Technologies/Key-Features layout) against `fetchProjectByIdForAdmin`
+— the admin data path, which ignores the `published` filter — with a
+"Draft preview — not visible to the public yet." banner and a "Back to
+editor" link. Verified live for a still-unpublished draft.
+
+**List page**: `ProjectsListClient.tsx` wraps the generic `AdminTable`
+with search (by name/slug) and a published/draft filter, plus a second
+inline toggle (Featured) alongside the standard Published one — a
+project-specific addition, not a new `AdminTable` prop, since no other
+entity needs two independent toggles per row. **Reordering while
+filtered needed real care, not just wiring `AdminTable` through**:
+`AdminTable`'s `onReorder` always hands back only the currently-*visible*
+rows, resequenced from 0 — submitting that directly while a search/filter
+is active would silently collapse every *hidden* row's `display_order`
+into the same tight range. `handleReorder` merges the new visible order
+back into the full canonical list first (hidden rows keep their relative
+position; only the visible ones take on the admin's new order), then
+submits the merged full order — reasoned through with a concrete
+before/after example rather than assumed correct, since this is exactly
+the kind of bug that would silently corrupt data only visible once a
+filter is later cleared.
+
+**Three real bugs, found live and fixed** — full technical writeup in
+[docs/content-management.md](./content-management.md#real-bugs-found-and-fixed-while-proving-phase-20-projects),
+summarized here:
+
+1. **`SlugField`'s auto-derive-from-name broke under React Strict Mode.**
+   The first time `checkAvailability` was actually wired up for real (this
+   phase), a live "Cannot update a component (`Controller`) while
+   rendering a different component (`SlugControl`)" warning appeared — the
+   field's original render-time `onChange` call (adjusting the *parent*
+   Controller's state, not its own) was never sound and had to move into
+   a `useEffect`. A first attempted fix (a plain "have I run yet" boolean
+   ref) looked right in isolation but was *worse* once retested: it
+   silently wiped an already-saved slug back to `""` on page load for a
+   draft with a blank name, because Strict Mode's dev-only double-invoke-
+   on-mount defeats a boolean flag (it flips to "already ran" after the
+   *first* of the two simulated mount passes, so the second no longer
+   skips). Fixed by tracking the actual last-seen `sourceValue` in a ref
+   instead of a boolean — correct regardless of how many times the effect
+   happens to run for the same underlying value.
+2. **The gallery uploader's `onChange` silently never ran.** Both the new
+   `ProjectMediaManager` and the pre-existing, never-proven
+   `MultiImageUploader` captured `event.target.files` (a *live* FileList
+   tied to the input) into a variable and only *then* reset
+   `event.target.value = ""` — which empties that same live object in
+   place, so the `files.length > 0` check that followed always failed and
+   `handleFiles` never ran, with zero error, toast, or network request to
+   explain why. Confirmed directly (capture the reference, clear `.value`,
+   re-read the *original* reference's `.length`: `0`). `ImageUploader`
+   never hit this because it extracts the actual `File` object immediately
+   (`files?.[0]`) rather than holding the FileList container. Fixed in
+   both files by copying out the File objects via `Array.from(...)` before
+   the reset — this was a real, previously-undiscoverable latent bug in
+   already-shipped Phase 18 code, only surfaced because Phase 20 was the
+   first phase to actually exercise a multi-file upload against a live
+   Storage backend.
+3. **`toLocaleDateString()` produced a real hydration mismatch** on the
+   list table's "Updated" column (`"Aug 17, 2026"` server vs.
+   `"17 Aug 2026"` client — different locales in the Node render pass vs.
+   the browser). Fixed with a new `formatAdminDate()` in `lib/utils.ts`,
+   hand-formatting the date without `toLocaleDateString` at all — the same
+   fixed-output-regardless-of-locale approach this file's other date
+   helpers already use for plain date columns, now extended to a full
+   `timestamptz`.
+
+**A real, previously-excluded environment gap, found by actually trying
+to upload a file, not assumed away**: the local Supabase stack's
+long-standing minimal `--exclude` flag set (Phases 1–19) excludes
+`storage-api` entirely — there had never been a real Storage backend
+running locally, so no entity's `ImageUploader`/`MultiImageUploader` usage
+in Phases 18–19 had ever actually been proven against one either, only
+built and reviewed. Discovered when a gallery upload attempt produced
+zero network requests and zero errors (before the FileList bug above was
+even isolated) and `docker ps` showed no `supabase_storage_*` container.
+Fixed the same way Phase 17 added Auth: `npx supabase stop` (data
+preserved) then `npx supabase start` with a revised `--exclude` list
+keeping `storage-api` in — confirmed via `npx supabase status -o env`
+that the JWT/keys this time stayed identical to what was already in
+`.env.local` (restored from Docker's own backup), unlike Phase 17's cycle,
+which did regenerate them; see "Where things stand" above for why neither
+outcome should be assumed without checking.
+
+**Verified live end-to-end against the real local Supabase stack**, same
+standard as every prior phase: a fully blank draft create → edit (name,
+slug auto-derive, logo/cover/gallery upload, technologies, a feature,
+GitHub/demo links) → publish (with the gate correctly blocking a second,
+separate blank draft) → confirmed on `/projects` and
+`/projects/<slug>` with zero manual cache-busting needed → search and
+status-filter on the list page → delete-with-storage-cleanup for both
+test rows (confirmed `storage.objects` for the `projects` bucket empty
+afterward, not just the Postgres rows gone). `projects`,
+`project_technologies`, `project_features`, and `project_media` are back
+to exactly `supabase/seed.sql`'s original one row each afterward.
+
+**Phase 21 — the remaining modules, preview mode, and the blog seam; the
+admin panel is complete (done, verified live).** Seven deliverables. Three
+(Certifications, Achievements, Contact) were close to pure configuration on
+top of Phases 18–20, exactly as Phase 18's "mostly configuration" goal
+intended. The other four each needed something genuinely new, and in every
+case the new thing was made generic rather than entity-specific — all
+written up in
+[docs/content-management.md](./content-management.md#phase-21-additions-to-shared-infrastructure).
+
+**Certifications / Achievements / Contact** follow the standard five-step
+entity shape verbatim. Two things worth noting: **`FileUploader`** is a new
+sibling to `ImageUploader` (`components/admin/upload/FileUploader.tsx`) —
+`ImageUploader` renders its value as an `<img>`, which is simply wrong for a
+column that may hold a PDF (a certification's certificate, an achievement's
+supporting document): you get a broken-image icon. `FileUploader` is the
+same upload/remove/validation mechanics with a filename-plus-open-link
+presentation, confirmed live showing `aws-ml-specialty.pdf` as a real link
+on the seeded certification. And **Contact needed a new sidebar destination**
+(`/admin/contact`, added to `components/admin/adminNav.ts`) — every other
+Phase 21 module replaced an existing `ComingSoon` placeholder, but contact
+links never had a nav entry at all.
+
+**Contact's per-type validation** (requirement 3) chains three refinements
+onto `contactLinkSchema`: a valid email for `email`, a valid phone number
+for `whatsapp`, and a required profile URL for
+`linkedin`/`github`/`twitter`. That last one exists because
+`lib/contactLinks.ts`'s `resolveContactHref` uses `url` as-is for those
+types and returns `null` without it — meaning the renderer would silently
+*skip* a row the schema had happily accepted. Validation and rendering now
+agree. **Contact's live preview** (`ContactPreview.tsx`) renders the real
+public `ContactContent` component against the currently-published set, not
+a mock — so it's structurally incapable of drifting from the real section,
+and it goes empty (with an explanatory line) exactly when the public
+section would hide itself.
+
+**Resume** (requirement 4) is the first module that deliberately *doesn't*
+follow the entity shape: no create/edit page pair, since upload and
+activate are the only writes. **The atomic active-swap was the real
+requirement** ("in a transaction or via the partial unique index, not with
+two separate updates"), and it's a new Postgres function,
+`public.set_active_resume(uuid)` — one function call is one implicit
+transaction, so deactivate-then-activate commit or roll back together and
+there is never a window with zero active rows. `createResume` always
+inserts inactive first and only then calls the RPC, so even a failure
+between those steps can't produce two active rows. `deleteResume` refuses
+to delete the currently-active version (the UI disables that button with an
+explanatory tooltip) — a deletable active resume would let the public site
+lose its download link, a worse failure than one extra click.
+
+**Settings** (requirement 5) is a singleton upsert like Profile.
+`fetchSiteSettingsForAdmin` reads the **base `site_settings` table**, not
+the `public_site_settings` view every public read uses — the view omits
+`id` (which the upsert needs) and the base table has no public-read RLS
+policy at all, so this must use the cookie-aware `createClient()`. The
+**nav editor** is the piece that matters (it's how future sections reach
+the nav without code): `NavItemsField` wraps the already-proven
+`RepeatableGroupField` for add/rename/reorder, plus a per-item
+Visible/Hidden toggle that is deliberately *not* `SwitchField` — hiding an
+item whose section still has published content behind it needs a
+confirmation step, which a plain field component has no hook for.
+`sectionHasContent` is computed from the same published-only `getX()` reads
+the public site itself calls, since "does this section have anything behind
+it" is exactly what decides whether it renders at all. **`hidden` is stored
+inside the existing `primary_nav` jsonb rather than as a schema change**,
+and `fetchSiteSettings` filters hidden entries out *and strips the flag*, so
+the public `NavItem` type stays `{label, href}` and Navbar/Footer never
+learn the concept exists.
+
+**Preview mode** (requirement 6, flagged in the brief as "do this
+properly") **replaced** Phase 20's standalone
+`app/admin/(protected)/projects/[id]/preview/page.tsx`, which is now
+deleted. That page *reused* the public page's components, but it was still
+a second page free to drift. Real Next.js draft mode instead makes **the
+actual public route** render unpublished content, so there is structurally
+nothing to drift. `app/admin/preview/enable/route.ts` is the only thing that
+can call `draftMode().enable()`, and it runs `getAuthenticatedAdmin()`
+first — the same gate every mutating action uses — plus the same
+open-redirect guard `resolveNextPath` applies to logins (`path` must start
+with `/projects/`, no scheme, no `//`, no backslash). It sits *outside*
+`(protected)` on purpose: it's a Route Handler, not a page, and wrapping a
+redirect in the admin shell layout would be meaningless.
+`app/(site)/projects/[slug]/page.tsx` reads `draftMode()` and swaps
+`getProjectBySlug` for the new uncached, cookie-aware
+`fetchProjectBySlugForPreview` (`generateMetadata` makes the same swap).
+`DraftPreviewBanner`'s dismiss (X) and "Exit preview" are deliberately
+separate controls — dismiss hides the banner locally while draft mode stays
+on; exit actually clears the cookie. **A worry that turned out fine, checked
+rather than assumed**: reading `draftMode()` did *not* force
+`/projects/[slug]` dynamic — `next build`'s route table still lists it as
+`●` (SSG, prerendered), so Phase 13's deliberate ISR behavior is intact.
+
+**Blog** (requirement 7) is intentionally minimal — list + form, no public
+route, no cache tag, no revalidation, since `lib/data/blogPosts.ts` has no
+public consumer to invalidate. All three route files re-check
+`blog_enabled` themselves rather than trusting the sidebar's disabled
+state, since a direct URL visit bypasses that. `resolvePublishedAt` lives
+in a new plain module, `lib/actions/blogShared.ts`, **specifically to avoid
+repeating Phase 19's trap** (a sync helper exported from a `"use server"`
+file breaks the whole file) — and keeping it there made it directly
+unit-testable, which is how its four cases were actually verified rather
+than asserted.
+
+**Two real bugs, found live and fixed** — full writeups in
+content-management.md:
+
+1. **Phase 19's relative-asset-path validation bug, repeating across five
+   more schemas.** `supabase/seed.sql` seeds *every* asset column with a
+   root-relative placeholder (`/images/organizations/aws.png`,
+   `/documents/certifications/aws-ml-specialty.pdf`,
+   `/images/og-cover.png`, ...), but Certifications, Achievements, Blog,
+   and Settings had all been written with the strict `optionalUrlSchema` —
+   so editing any seeded row would have failed validation on a field the
+   admin never touched, exactly as Profile/Education did in Phase 19.
+   **Found by reading the seed against the new schemas before testing them,
+   not by hitting it.** Fixed by applying the existing exemption schema to
+   `certifications.organization_logo_url`/`certificate_file_url`,
+   `achievements.image_url`/`document_url`, `blog_posts.cover_image_url`,
+   and `site_settings.og_image_url`. Genuine external links
+   (`credential_url`, `external_link`, `github_url`, ...) keep the strict
+   schema. Also **renamed `optionalImageUrlSchema` → `optionalAssetUrlSchema`**,
+   since two of the newly-covered columns hold PDFs rather than images and
+   the old name read wrong at those call sites. Verified by loading the
+   seeded certification's edit page and saving it *untouched*: it redirected
+   to the list with zero field errors, and Postgres confirmed a real write
+   (`updated_at` bumped) with both root-relative paths intact.
+2. **The WhatsApp phone regex rejected `(555) 123-4567`.** The first
+   attempt, `/^\+?[0-9][0-9\s\-()]{6,18}[0-9]$/`, required the character
+   right after the optional `+` to be a digit — so an entirely ordinary
+   US-formatted number starting with a parenthesis failed, while the admin
+   guide I'd just written promised "spaces, dashes, brackets and a leading
+   `+` are all fine." Caught by running the schema against a table of real
+   formats rather than eyeballing the regex. Fixed by validating on **digit
+   count** (7–15, the E.164 range) plus an allowed-character check, which
+   also mirrors how the value is actually consumed — `resolveContactHref`
+   builds the `wa.me` link by stripping every non-digit. Re-verified across
+   14 cases: 8 real formats (US/UK/India, parens/dashes/dots/spaces) all
+   accepted and each producing a correct `wa.me` URL, 6 garbage inputs all
+   rejected.
+
+**Verified live end-to-end against the real local Supabase stack**, same
+standard as every prior phase:
+
+- **Draft-mode preview, the full lifecycle** — unpublished the seeded
+  project through the admin's own inline switch, confirmed the public
+  `/projects/customer-churn-prediction` returned a genuine **404** to an
+  anonymous request; enabled preview and confirmed **the same URL** rendered
+  the draft with the real `<h1>`, real page title, and every real section
+  (Overview / The Problem / The Solution / Purpose / Technologies / Key
+  Features / Gallery) with genuine content (`scikit-learn`, a feature's
+  title *and* description, GitHub + Live Demo links) plus the banner and a
+  working "Exit preview" link; confirmed the draft-mode cookie is
+  **httpOnly** (`document.cookie` can't see it); then exited and confirmed
+  the same page 404s again *in the same browser session*. Also confirmed
+  `/admin/preview/enable?path=...` redirects a signed-out request to
+  `/admin/login` — the "never a guessable URL" requirement.
+- **Resume atomic swap** — two versions in the table, clicked "Set active"
+  on the inactive one, confirmed in Postgres that the old one flipped to
+  `false` and the new to `true` with **exactly one** active row. Separately
+  confirmed the partial unique index is a real backstop beneath the RPC: a
+  raw `UPDATE` forcing a second active row fails with `duplicate key value
+  violates unique constraint "resumes_single_active_idx"`. Confirmed the
+  active version's delete button is disabled with the "Activate a different
+  version first" tooltip.
+- **Settings nav hide-with-warning** — clicked a visible item's toggle,
+  confirmed the confirmation dialog appeared with the correct title and
+  body copy, confirmed it, saved, and verified both that `hidden: true`
+  persisted into the jsonb **and that `#about` disappeared from the public
+  homepage's nav** while the other three links remained. Restored
+  afterward.
+- **Blog behind the flag** — with the flag on, the list rendered the seeded
+  post and its edit form saved cleanly; with it off, `/admin/blog` shows
+  "Blog is disabled", `/admin/blog/new` **redirects** to `/admin/blog`, and
+  the sidebar renders Blog as a non-link `<span aria-disabled="true">` with
+  an explanatory title. `/blog` on the public site 404s throughout — there
+  is no public blog.
+- **Certifications** — the expired/valid indicator renders in the list
+  ("Valid until Jun 2027"); the expiration-after-issue rule was verified
+  across four cases (after / before / equal / absent) including that an
+  expiry equal to the issue date is allowed.
+- **Clean `next build` and clean `npx eslint .`** (both exit 0) after every
+  change, with the route table confirming all 15 new/changed routes and
+  `/projects/[slug]` still prerendered.
+
+Every test row created during verification was removed afterward; all 15
+tables are back to exactly one seeded row each and **zero objects in every
+Storage bucket**, confirmed by a single row-count query at the end.
+
+**Environment notes specific to this phase**, all worth not re-discovering:
+
+- **`npx supabase db reset` wipes `auth.users` and `private.admins`** along
+  with the content tables, so the Phase-17 local test admin
+  (`test-admin@example.com` / `Test-Admin-Pass-123!`) stopped existing the
+  moment the new migrations were applied. Recreating it is two steps, both
+  fast: `POST {SUPABASE_URL}/auth/v1/admin/users` with the service-role key
+  as both `apikey` and `Authorization: Bearer` (body
+  `{"email":...,"password":...,"email_confirm":true}`), then a `docker exec
+  ... psql` insert into `private.admins` selecting that user's id — the
+  same route Phase 17 documented, just with `curl` instead of a throwaway
+  `tsx` script.
+- **Phase 14's shared-dev-server lesson bit again, and the documented fix
+  is still the only one.** Another chat session's `next dev` held port 3000
+  against this same directory. Setting `"autoPort": true` in
+  `.claude/launch.json` did **not** help — Next 16's dev-server lock is
+  keyed to the **project directory, not the port**, so a second instance is
+  refused even when it successfully binds a different port (it starts, logs
+  "Another `next dev` server is already running", and exits 1). Reverted
+  that config change; pointed the Browser pane at the existing
+  `localhost:3000` origin instead, which picks up saved edits via normal
+  HMR exactly as Phase 14/15 found. Worth knowing the failure mode looks
+  like a *successful* start followed by an immediate exit, not a bind
+  error.
+- **`rm -rf .next` while another session's dev server is running is worse
+  than it sounds** — that directory belongs to the running process. Doing
+  it here (to clear a stale `.next/types` cache before `tsc`) forced the
+  other session's server to recompile from cold. It recovered fine
+  (verified: `/` returned 200 and every new admin route returned a correct
+  `307` to login afterward), but the cleaner move is `npx next typegen`, or
+  a full `next build`, which regenerates the route types without deleting
+  anything. Deleting `.next` also makes a bare `npx tsc --noEmit` fail with
+  two spurious `Cannot find name 'LayoutProps'` errors, since that global
+  is generated into `.next/types` — run `next build` (or `next typegen`)
+  before trusting a standalone `tsc` run.
+- **Radix `Select` could not be opened by synthetic events in this pane**,
+  even with the full `PointerEvent` sequence that works for
+  `DropdownMenu` (Phase 18) — neither `pointerdown`/`pointerup`, nor
+  `.click()`, nor a focused `Enter` keydown flipped `aria-expanded` off
+  `false`. Radix `Switch` and plain form submits worked fine in the same
+  tab (hydration confirmed via `__reactProps$`), so this is specific to
+  `Select`'s pointer-capture behavior in a non-composited pane, not a
+  hydration stall. When a `Select`'s *value* is what needs proving, test
+  the underlying pure logic directly instead (as was done for
+  `resolvePublishedAt`) rather than burning time on the widget —
+  `SelectField` itself is already-proven Phase 20 infrastructure.
+
 ## Recurring lessons worth not re-learning
 
 - **Verify against the real thing, not a simulated harness.** Phase 3's
@@ -1442,14 +1907,63 @@ inexplicably inert, rather than assuming new code broke it.
 - **The local Supabase stack's excluded-services list (`supabase/README.md`)
   isn't permanent — it reflects what earlier phases happened to need, not a
   hard limit.** Phase 17 needed real Auth for the first time and discovered
-  `gotrue` had been excluded since Phase 1. `supabase start` with a
-  *different* `--exclude` list does not add newly-included services to an
-  already-running stack; only `supabase stop` (data preserved unless
-  `--no-backup`) followed by a fresh `start` actually creates the missing
-  container. That cycle also regenerates the JWT signing material, which
-  silently invalidates every key already saved in `.env.local` — always
-  re-derive from `npx supabase status -o env` after a stop/start cycle,
-  never assume old keys still work just because the URL didn't change.
+  `gotrue` had been excluded since Phase 1; Phase 20 needed real file
+  uploads and discovered `storage-api` had been excluded the whole time
+  too. `supabase start` with a *different* `--exclude` list does not add
+  newly-included services to an already-running stack; only `supabase
+  stop` (data preserved unless `--no-backup`) followed by a fresh `start`
+  actually creates the missing container. That cycle *can* regenerate the
+  JWT signing material (it did in Phase 17) **but doesn't always** — Phase
+  20's own stop/start cycle restored from Docker's backup and kept the
+  exact same keys. Always re-derive from `npx supabase status -o env`
+  after a stop/start cycle and compare against `.env.local` rather than
+  assuming either outcome.
+- **`event.target.files` on a file `<input>` is a *live* FileList, not a
+  snapshot** — capturing it into a variable and *then* resetting
+  `event.target.value = ""` (the standard "let the same file be
+  re-selected next time" trick) empties the *already-captured* reference
+  too, in place, confirmed directly by reading `.length` on the original
+  reference after the reset (`0`). A multi-file `onChange` handler that
+  captures the FileList container itself, rather than immediately
+  extracting the actual `File` objects (`Array.from(event.target.files)`,
+  or `files?.[0]` for a single-file input), will silently never process
+  anything — no error, no thrown exception, nothing to grep the console
+  for. Bit both `MultiImageUploader.tsx` and the new
+  `ProjectMediaManager.tsx` in Phase 20; check this first if a file-input
+  `onChange` handler seems to just never fire its own logic.
+- **React Strict Mode (on by default) double-invokes effects on mount in
+  development** — a plain boolean "have I run yet" ref flips to `false`→
+  `true` after the *first* of the two simulated mount passes and stays
+  `true`, so it no longer guards the *second* pass the way it's meant to.
+  If an effect needs to skip only when a *value* genuinely hasn't changed
+  (not "is this literally the first time"), track the actual last-seen
+  value in the ref and compare against it, not a boolean flag. Bit
+  `SlugField.tsx` in Phase 20 — the boolean-flag version looked correct in
+  isolated testing and only failed on a second, differently-shaped test
+  case (a blank name on an already-saved-slug row).
+- **`supabase/seed.sql` seeds every asset column with a root-relative
+  placeholder path, and `optionalUrlSchema` (`z.url()`) rejects those.**
+  This bug has now been hit *twice* — Phase 19 (Profile, Education) and
+  Phase 21 (Certifications ×2, Achievements ×2, Blog, Settings) — because
+  Zod validates the whole submitted payload, so a seeded value the admin
+  never touched blocks saving anything on that form. **When adding an admin
+  form for an entity, grep `supabase/seed.sql` for that table's asset
+  columns first**: any column holding an *uploaded* asset (logo, avatar,
+  cover image, certificate PDF, supporting document, OG image) wants
+  `optionalAssetUrlSchema`, not `optionalUrlSchema`. Genuine external links
+  (`link_url`, `github_url`, `credential_url`, `external_link`) correctly
+  keep the strict one. Phase 21 found it by reading rather than by hitting
+  it — that grep is cheap and catches the whole class at once.
+- **Don't hand-roll a format regex when the consumer only needs a
+  normalized value.** Phase 21's WhatsApp validator started as one regex
+  describing where punctuation may sit, and silently rejected
+  `(555) 123-4567` because the character after the optional `+` had to be a
+  digit. Validating on *digit count* plus an allowed-character check is both
+  simpler and correct, and it mirrors how the value is actually consumed
+  (`resolveContactHref` strips every non-digit to build the `wa.me` link).
+  More generally: **run a new validator against a table of real inputs
+  before trusting it** — the bug was invisible on inspection and obvious
+  within one test run.
 - **Next.js renamed the `middleware.ts` file convention to `proxy.ts`** in
   the version this project is on (16.3.1) — writing a conventional
   `middleware.ts` still works but logs a runtime deprecation warning.
@@ -1464,51 +1978,45 @@ inexplicably inert, rather than assuming new code broke it.
 **The public site is done** (`app/(site)/`, Phases 1–16), **admin
 authentication + the protected shell are done** (`app/admin/`, Phase 17),
 **the shared admin infrastructure is done and proven** (Phase 18), and
-**Profile, Skills, and Experience are wired up and verified live**
-(Phase 19) — `AdminTable`, `AdminForm` + its nine field components,
-`ImageUploader`/`MultiImageUploader`, `lib/actions/` Server Action
-machinery, and now four entities (Education, Profile, Skills, Experience)
-proven end to end. Every sidebar destination other than Dashboard,
-Profile, Skills, Experience, and Education (`app/admin/(protected)/
-projects/`, `certifications/`, `achievements/`, `blog/`, `resume/`,
-`settings/`) is still a `ComingSoon` placeholder page — real per
-CLAUDE.md's "build the seam, not the feature" precedent, not an
-oversight.
+**the admin panel is now complete** (Phases 19–21). Every sidebar
+destination is a real editor: Dashboard, Profile, Skills, Experience,
+Education, Projects, Certifications, Achievements, Contact, Blog (behind
+`blog_enabled`), Resume, Settings. No `ComingSoon` placeholder pages remain.
+
+Proven end to end across those phases: `AdminTable`, `AdminForm` + its nine
+field components, `ImageUploader`/`FileUploader`/`ProjectMediaManager`, the
+`lib/actions/` Server Action machinery, `SlugField`'s live duplicate-check,
+`RepeatableGroupField`, real Next.js draft-mode preview against the actual
+public route, and an atomic single-active-resume swap via a Postgres
+function.
 
 What's left:
-- **The remaining content editors (Phase 20+)** — repeat the same
-  five-step pattern (documented in
-  [docs/content-management.md](./content-management.md#the-shape-of-an-entity-module))
-  once per entity: admin read functions in `lib/data/<entity>.ts`,
-  `lib/actions/<entity>.ts`, `<Entity>Form`/`<Entity>Table`, and the three
-  route files. Every entity already has a Zod schema in `lib/validation/`
-  (Phase 4) and shadcn primitives are already installed (Phase 6) — this
-  really should be "mostly configuration," per the brief, since the
-  machinery itself is proven (four entities in now, across two different
-  phases, with only small additive extensions needed — see Phase 19's log
-  entry). **Projects is still the natural next one**: it's the first
-  entity that will actually exercise `SlugField`'s live duplicate-check
-  and `RepeatableGroupField` (project features) for real, both currently
-  built but unproven end-to-end (see docs/content-management.md's "Known
-  gaps"); it also has child tables (`project_technologies`,
-  `project_features`, `project_media`) and a gallery field, which will
-  exercise `MultiImageUploader` for the first time and need
-  `revalidatePath` calls at three places (`/`, `/projects`,
-  `/projects/[slug]`) per docs/architecture.md's Per-route revalidation
-  section.
 - **Provisioning a real hosted Supabase project** — still only a local
   stack exists (see "Where things stand" above); needed before the site
-  can go live regardless of admin panel status, per
+  can go live, per
   [docs/deployment.md](./deployment.md#admin-account) (a *different*,
-  real admin account from Phase 17's local-only test one).
-- Real content (actual project screenshots/resume PDF/portrait/logos) —
+  real admin account from Phase 17's local-only test one). **Note the two
+  Phase 21 migrations must be applied there too**, and
+  `NEXT_PUBLIC_SITE_URL` must point at the real origin for
+  `metadataBase`/the resume route to resolve correctly.
+- **Real content** (actual project screenshots/resume PDF/portrait/logos) —
   every asset path referenced by `supabase/seed.sql` is still a
   placeholder that doesn't exist in `public/`, by design (see this file's
   Phase 8/9/14/16 notes on that being deliberately exercised, not an
-  oversight).
+  oversight). This is now the main thing standing between the admin panel
+  and a genuinely populated site.
+- **A public blog, if and when it's wanted** — the schema, the admin
+  module, and the feature flag are all real and proven; the deliberate
+  remainder is a public route, a cached read in `lib/data/blogPosts.ts`, a
+  `CACHE_TAGS.blog` tag, and the three-place `revalidatePath` treatment
+  Projects already models (it's the closest precedent, being the only other
+  entity with its own detail route). See content-management.md's
+  cache-invalidation table, which spells out exactly what to add.
+- **Optional tidying**: `components/admin/ComingSoon.tsx` is now unused,
+  and `MultiImageUploader` still has no real entity behind it (see
+  content-management.md's "Known gaps, by design").
 
-No further detail on any of these exists yet — those prompts haven't been
-given. When they arrive, update this file's "Where things stand" and add a
-new phase-log entry the same way the ones above are written: what got
+When the next prompt arrives, update this file's "Where things stand" and
+add a new phase-log entry the same way the ones above are written: what got
 built, key files touched, and anything non-obvious a future session would
 otherwise have to re-discover the hard way.

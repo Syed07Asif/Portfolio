@@ -3,6 +3,7 @@ import { STORAGE_BUCKETS } from "@/lib/constants";
 import {
   displayOrderSchema,
   fileSchema,
+  optionalAssetUrlSchema,
   optionalDateSchema,
   optionalUrlSchema,
   publishedSchema,
@@ -15,8 +16,11 @@ export const achievementSchema = z.object({
   description: textSchema(2000).optional().nullable(),
   date: optionalDateSchema,
   organization: textSchema(200).optional().nullable(),
-  image_url: optionalUrlSchema,
-  document_url: optionalUrlSchema,
+  // Uploaded assets (see optionalAssetUrlSchema) — the seed points both at
+  // root-relative placeholder paths. `external_link` stays strict: it's a
+  // genuine external reference link, never an upload.
+  image_url: optionalAssetUrlSchema,
+  document_url: optionalAssetUrlSchema,
   external_link: optionalUrlSchema,
   display_order: displayOrderSchema,
   published: publishedSchema,

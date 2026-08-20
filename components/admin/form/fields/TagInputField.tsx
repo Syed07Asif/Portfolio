@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import type { Control, FieldValues, Path } from "react-hook-form";
 import { XIcon } from "lucide-react";
 import { FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/admin/ui/form";
@@ -12,6 +12,13 @@ export interface TagInputFieldProps<TValues extends FieldValues> {
   description?: string;
   placeholder?: string;
   disabled?: boolean;
+  /**
+   * Existing values to suggest via the native `<datalist>` autocomplete —
+   * e.g. technology names already used on other projects, so "Postgres"
+   * and "PostgreSQL" don't both end up as separate tags. Purely a browser
+   * autocomplete hint, not a closed list — any typed value still commits.
+   */
+  suggestions?: string[];
 }
 
 /**
@@ -28,13 +35,16 @@ function TagInputControl({
   onChange,
   disabled,
   placeholder,
+  suggestions,
 }: {
   value: string[];
   onChange: (value: string[]) => void;
   disabled?: boolean;
   placeholder?: string;
+  suggestions?: string[];
 }) {
   const [draft, setDraft] = useState("");
+  const datalistId = useId();
 
   function commit() {
     const trimmed = draft.trim();
@@ -77,7 +87,15 @@ function TagInputControl({
         onBlur={commit}
         placeholder={value.length === 0 ? placeholder : undefined}
         disabled={disabled}
+        list={suggestions?.length ? datalistId : undefined}
       />
+      {suggestions?.length ? (
+        <datalist id={datalistId}>
+          {suggestions.map((suggestion) => (
+            <option key={suggestion} value={suggestion} />
+          ))}
+        </datalist>
+      ) : null}
     </div>
   );
 }
@@ -90,6 +108,7 @@ export function TagInputField<TValues extends FieldValues>({
   description,
   placeholder,
   disabled,
+  suggestions,
 }: TagInputFieldProps<TValues>) {
   return (
     <FormField
@@ -104,6 +123,7 @@ export function TagInputField<TValues extends FieldValues>({
               onChange={field.onChange}
               disabled={disabled}
               placeholder={placeholder}
+              suggestions={suggestions}
             />
           </FormControl>
           {description ? <FormDescription>{description}</FormDescription> : null}

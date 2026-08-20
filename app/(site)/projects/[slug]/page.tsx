@@ -1,14 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { draftMode } from "next/headers";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, ExternalLink, FolderGit2 } from "lucide-react";
 import { Button, Card, Container, Divider, Tag } from "@/components/ui";
 import { getProjectBySlug, getProjectSlugs, getProjects } from "@/lib/data";
+import { fetchProjectBySlugForPreview } from "@/lib/data/projects";
 import { selectProjects } from "@/lib/projects";
 import { formatOptionalDateRange, splitParagraphs } from "@/lib/utils";
 import { ProjectCardImage } from "@/components/sections/projects/ProjectCardImage";
 import { ProjectStatusBadge } from "@/components/sections/projects/ProjectStatusBadge";
 import { ProjectMediaGallery } from "@/components/sections/projects/ProjectMediaGallery";
+import { DraftPreviewBanner } from "@/components/sections/projects/DraftPreviewBanner";
 
 interface ProjectPageProps {
   params: Promise<{ slug: string }>;
@@ -34,7 +37,8 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: ProjectPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const project = await getProjectBySlug(slug);
+  const { isEnabled: isPreview } = await draftMode();
+  const project = isPreview ? await fetchProjectBySlugForPreview(slug) : await getProjectBySlug(slug);
 
   if (!project) return {};
 
@@ -67,7 +71,12 @@ export async function generateMetadata({ params }: ProjectPageProps): Promise<Me
  */
 export default async function ProjectDetailPage({ params }: ProjectPageProps) {
   const { slug } = await params;
-  const [project, allProjects] = await Promise.all([getProjectBySlug(slug), getProjects()]);
+  const { isEnabled: isPreview } = await draftMode();
+
+  const [project, allProjects] = await Promise.all([
+    isPreview ? fetchProjectBySlugForPreview(slug) : getProjectBySlug(slug),
+    getProjects(),
+  ]);
 
   if (!project) notFound();
 
@@ -85,7 +94,9 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
   const next = currentIndex >= 0 && currentIndex < ordered.length - 1 ? ordered[currentIndex + 1] : null;
 
   return (
-    <Container className="flex flex-col gap-10 py-(--space-section-y)">
+    <>
+      {isPreview ? <DraftPreviewBanner /> : null}
+      <Container className="flex flex-col gap-10 py-(--space-section-y)">
       <Button asChild variant="ghost" size="sm" leadingIcon={ArrowLeft} className="w-fit">
         <Link href="/projects">Back to projects</Link>
       </Button>
@@ -209,7 +220,8 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
           <span aria-hidden="true" className="hidden sm:block" />
         )}
       </div>
-    </Container>
+      </Container>
+    </>
   );
 }
 

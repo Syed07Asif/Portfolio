@@ -1,5 +1,5 @@
 import { unstable_cache } from "next/cache";
-import { createStaticClient } from "@/lib/supabase/server";
+import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Resume } from "@/types/content";
 import { logDataError } from "./shared";
@@ -24,3 +24,21 @@ export const getActiveResume = unstable_cache(fetchActiveResume, ["active-resume
   revalidate: 3600,
   tags: [CACHE_TAGS.resume],
 });
+
+/** The admin list shape — every version, active or not, plus the internal storage_path needed for cleanup on delete. */
+export type AdminResume = Resume & { storage_path: string | null; is_active: boolean };
+
+/** Admin-only read — every uploaded version, newest first. See fetchEducationForAdmin's doc comment for why this isn't wrapped in unstable_cache. */
+export async function fetchResumesForAdmin(): Promise<AdminResume[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("resumes")
+    .select("id, file_url, storage_path, version_label, is_active, uploaded_at")
+    .order("uploaded_at", { ascending: false });
+
+  if (error) {
+    logDataError("fetchResumesForAdmin", error);
+    return [];
+  }
+  return data ?? [];
+}

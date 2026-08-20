@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   displayOrderSchema,
   optionalDateSchema,
-  optionalImageUrlSchema,
+  optionalAssetUrlSchema,
   optionalUrlSchema,
   publishedSchema,
   requiredTextSchema,
@@ -13,7 +13,7 @@ export const educationSchema = z.object({
   institution: requiredTextSchema(200),
   degree: requiredTextSchema(200),
   field_of_study: textSchema(200).optional().nullable(),
-  institution_logo_url: optionalImageUrlSchema,
+  institution_logo_url: optionalAssetUrlSchema,
   start_date: optionalDateSchema,
   end_date: optionalDateSchema,
   grade: textSchema(100).optional().nullable(),

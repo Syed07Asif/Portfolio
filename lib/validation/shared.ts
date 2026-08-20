@@ -34,18 +34,29 @@ const rootRelativePathSchema = z
   .regex(/^\/(?!\/)\S*$/, "Must be a valid URL or a root-relative path (e.g. /images/photo.jpg)");
 
 /**
- * Same as `optionalUrlSchema`, but also accepts a root-relative path —
- * for image/logo/avatar columns specifically, not general-purpose external
- * links. Every uploaded value going forward is a real absolute Storage URL
- * (see lib/storage/upload.ts), but supabase/seed.sql seeds these columns
- * with placeholder relative paths like "/images/avatar.jpg" (no real asset
- * pipeline exists yet — see docs/progress.md's Phase 8 entry), and the
- * public site already resolves that shape today (Phase 16's resume route
- * does the same thing for `file_url`). Without this, editing any
- * still-seeded entity through the admin — without also replacing its
- * logo/avatar — fails validation on a field the admin never touched.
+ * Same as `optionalUrlSchema`, but also accepts a root-relative path — for
+ * columns holding an **uploaded asset** (a logo, avatar, cover image,
+ * certificate PDF, supporting document, OG image), never for a
+ * general-purpose external link. Every uploaded value going forward is a
+ * real absolute Storage URL (see lib/storage/upload.ts), but
+ * supabase/seed.sql seeds every one of these columns with a placeholder
+ * relative path like "/images/avatar.jpg" or
+ * "/documents/certifications/aws-ml-specialty.pdf" (no real asset pipeline
+ * exists yet — see docs/progress.md's Phase 8 entry), and the public site
+ * already resolves that shape today (Phase 16's resume route does the same
+ * thing for `file_url`). Without this, editing any still-seeded entity
+ * through the admin — without also replacing its asset — fails validation
+ * on a field the admin never touched.
+ *
+ * Named `optionalImageUrlSchema` when introduced in Phase 19 (which only
+ * had image columns to apply it to); renamed in Phase 21 once
+ * Certifications' certificate PDF and Achievements' supporting document
+ * needed the identical rule for a non-image asset. Genuine external links
+ * (`link_url`, `github_url`, `credential_url`, `external_link`, ...) keep
+ * the stricter `optionalUrlSchema`, since a relative path never makes
+ * sense for those.
  */
-export const optionalImageUrlSchema = z
+export const optionalAssetUrlSchema = z
   .union([requiredUrlSchema, rootRelativePathSchema, z.literal("")])
   .optional()
   .nullable()

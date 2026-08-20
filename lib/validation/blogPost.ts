@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Constants } from "@/types/database";
 import { STORAGE_BUCKETS } from "@/lib/constants";
-import { displayOrderSchema, fileSchema, optionalUrlSchema, requiredTextSchema, slugSchema, textSchema } from "./shared";
+import { displayOrderSchema, fileSchema, optionalAssetUrlSchema, requiredTextSchema, slugSchema, textSchema } from "./shared";
 
 export const blogStatusSchema = z.enum(Constants.public.Enums.blog_status);
 
@@ -10,7 +10,9 @@ export const blogPostSchema = z.object({
   slug: slugSchema,
   excerpt: textSchema(500).optional().nullable(),
   content: textSchema(50000).optional().nullable(),
-  cover_image_url: optionalUrlSchema,
+  // Uploaded asset (see optionalAssetUrlSchema) — the seed points this at a
+  // root-relative placeholder path.
+  cover_image_url: optionalAssetUrlSchema,
   category: textSchema(100).optional().nullable(),
   tags: z.array(requiredTextSchema(50)).optional().nullable(),
   author: textSchema(200).optional().nullable(),
