@@ -208,7 +208,13 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`. No new dependencies were needed for Phase 20.
-- **Latest commit:** `88902c5` — "Phase 23: resilience — error pages,
+- **Latest commit:** `117bbd2` — "Phase 24 groundwork: measurement/test
+  tooling, and a handoff note in progress.md," pushed to `origin/develop`.
+  It touches only `package.json`, `package-lock.json` and this file; no
+  application code. This very edit (recording that hash) is a docs-only
+  follow-up on top of it, so expect `git log --oneline` to show one commit
+  above `117bbd2` that changed nothing but `docs/progress.md`.
+  Before that, `88902c5` — "Phase 23: resilience — error pages,
   loading states, and a real empty-state audit," pushed to `origin/develop`
   (53 files — `git show 88902c5 --stat`; the commit message carries the full
   reasoning and this file's Phase 23 entry the narrative, including the five
