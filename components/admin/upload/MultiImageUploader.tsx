@@ -56,7 +56,7 @@ function SortableThumbnail({
       <button
         type="button"
         disabled={disabled}
-        className="absolute top-1 left-1 flex size-6 cursor-grab items-center justify-center rounded-md bg-background/80 text-foreground opacity-0 transition-opacity group-hover:opacity-100 active:cursor-grabbing disabled:hidden"
+        className="absolute top-1 left-1 flex size-6 cursor-grab items-center justify-center rounded-md bg-background/80 text-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 active:cursor-grabbing disabled:hidden"
         aria-label="Reorder image"
         {...attributes}
         {...listeners}
@@ -69,7 +69,7 @@ function SortableThumbnail({
           type="button"
           variant="destructive"
           size="icon-xs"
-          className="absolute top-1 right-1 opacity-0 transition-opacity group-hover:opacity-100"
+          className="absolute top-1 right-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
           onClick={onRemove}
           aria-label="Remove image"
         >
@@ -199,6 +199,15 @@ export function MultiImageUploader({ value, onChange, bucket, recordId, label = 
         type="file"
         multiple
         accept={bucketConfig.allowedMimeTypes.join(",")}
+        // Hidden from both the tab order and the accessibility tree on
+        // purpose. This input is a programmatic trigger — the visible Button
+        // above calls `.click()` on it — so exposing it as well produced a
+        // second, invisible tab stop for the same action *and* failed axe's
+        // `label` rule (Phase 24 found both on /admin/projects/new).
+        // `sr-only` only hides it visually; it stays focusable and
+        // screen-reader-visible without these two attributes.
+        tabIndex={-1}
+        aria-hidden="true"
         className="sr-only"
         disabled={disabled}
         onChange={(event) => {

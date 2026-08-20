@@ -1,10 +1,6 @@
-"use client";
-
-import { motion } from "motion/react";
 import { Briefcase, MapPin, PenLine, Sparkles, Target } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { EmptyState } from "@/components/ui";
-import { revealOnScroll, staggerContainer, staggerItem } from "@/lib/motion";
 import { AboutPortrait } from "./AboutPortrait";
 
 interface QuickFact {
@@ -49,16 +45,14 @@ export function AboutContent({
   ].filter((fact): fact is QuickFact => fact !== null);
 
   return (
-    <motion.div
-      variants={staggerContainer}
-      {...revealOnScroll}
-      className="grid grid-cols-1 items-start gap-10 lg:grid-cols-3 lg:gap-16"
+    <div
+      className="reveal-group grid grid-cols-1 items-start gap-10 lg:grid-cols-3 lg:gap-16"
     >
-      <motion.div variants={staggerItem} className="mx-auto w-full max-w-sm lg:mx-0 lg:max-w-none">
+      <div className="mx-auto w-full max-w-sm lg:mx-0 lg:max-w-none">
         <AboutPortrait src={avatarUrl} name={name} />
-      </motion.div>
+      </div>
 
-      <motion.div variants={staggerItem} className="flex flex-col gap-8 lg:col-span-2">
+      <div className="flex flex-col gap-8 lg:col-span-2">
         {bioParagraphs.length > 0 ? (
           <div className="flex flex-col gap-4">
             {bioParagraphs.map((paragraph, index) => (
@@ -85,7 +79,7 @@ export function AboutContent({
             ))}
           </div>
         ) : null}
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }

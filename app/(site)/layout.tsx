@@ -99,9 +99,18 @@ export default async function SiteLayout({ children }: LayoutProps<"/">) {
 
   return (
     <>
+      {/*
+        The skip link carried `focus-visible:outline-none`, leaving it as the
+        one focusable control on the public site with no focus ring at all
+        (Phase 24's keyboard pass found it by tabbing and reading computed
+        styles). Un-hiding itself on focus is *an* indication, but it is the
+        very first thing a keyboard user lands on, and it now gets the same
+        `ring-2 ring-ring` treatment every other interactive element uses
+        rather than a bare accent block.
+      */}
       <a
         href="#main"
-        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-4 focus-visible:left-4 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-accent focus-visible:px-4 focus-visible:py-2 focus-visible:text-accent-foreground focus-visible:outline-none"
+        className="sr-only focus-visible:not-sr-only focus-visible:fixed focus-visible:top-4 focus-visible:left-4 focus-visible:z-50 focus-visible:rounded-md focus-visible:bg-accent focus-visible:px-4 focus-visible:py-2 focus-visible:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
         Skip to content
       </a>

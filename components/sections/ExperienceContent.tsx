@@ -1,8 +1,4 @@
-"use client";
-
-import { motion } from "motion/react";
 import { cn } from "@/lib/utils";
-import { fadeInUp, revealOnScroll } from "@/lib/motion";
 import { ExperienceItem } from "./ExperienceItem";
 import type { Experience } from "@/types/content";
 
@@ -50,7 +46,7 @@ export function ExperienceContent({ entries }: ExperienceContentProps) {
         const isLast = index === entries.length - 1;
 
         return (
-          <motion.li key={entry.id} variants={fadeInUp} {...revealOnScroll} className="relative">
+          <li key={entry.id} className="reveal relative">
             {/* Mobile / tablet: rail on the left, single column. */}
             <div className="flex gap-4 md:hidden">
               <Rail isLast={isLast} />
@@ -77,7 +73,7 @@ export function ExperienceContent({ entries }: ExperienceContentProps) {
                 ) : null}
               </div>
             </div>
-          </motion.li>
+          </li>
         );
       })}
     </ol>

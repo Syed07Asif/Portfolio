@@ -1,10 +1,6 @@
-"use client";
-
 import Link from "next/link";
-import { motion } from "motion/react";
 import { ArrowRight, Download, Send } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
-import { staggerContainer, staggerItem } from "@/lib/motion";
 import { RESUME_ROUTE, SECTION_IDS } from "@/lib/constants";
 
 export interface HeroRevealProps {
@@ -27,9 +23,18 @@ export interface HeroRevealProps {
  * requirement: a mostly-empty profile row still has to look deliberate, not
  * broken) — the stagger sequence just has fewer steps, no empty gaps.
  *
- * staggerContainer/staggerItem (lib/motion.ts) time this at ~0.3s duration
- * + 0.08s stagger per item, ~0.04s initial delay — with at most 7 items
- * here that's under 0.8s end-to-end, comfortably inside the ~1.2s budget.
+ * **This is a Server Component** (Phase 24). The staggered entrance is now
+ * the `.hero-in-group` rule in styles/globals.css — a plain CSS animation
+ * with per-child `animation-delay`, timed to match what
+ * staggerContainer/staggerItem used to do (~0.3s duration, 0.08s per item,
+ * 0.04s initial delay; at most 7 items, so under 0.8s end-to-end).
+ *
+ * Making this server-rendered matters more here than anywhere else on the
+ * site: it is the largest text block above the fold and therefore the LCP
+ * candidate, and it previously sat behind a client boundary whose hydration
+ * was measured blocking first paint for seconds on a throttled mobile
+ * profile. As CSS, the text is painted from the first frame and the
+ * animation only costs its own ~300ms.
  */
 export function HeroReveal({
   name,
@@ -41,58 +46,52 @@ export function HeroReveal({
   headingId,
 }: HeroRevealProps) {
   return (
-    <motion.div
-      variants={staggerContainer}
-      initial="hidden"
-      animate="visible"
-      className="flex max-w-2xl flex-col gap-3 py-8 sm:gap-5 sm:py-20 lg:py-0"
+    <div
+      className="hero-in-group flex max-w-2xl flex-col gap-3 py-8 sm:gap-5 sm:py-20 lg:py-0"
     >
-      <motion.p
-        variants={staggerItem}
+      <p
         className="text-caption font-medium uppercase tracking-wider text-accent"
       >
         Hello, I&apos;m
-      </motion.p>
+      </p>
 
-      <motion.h1
+      <h1
         id={headingId}
-        variants={staggerItem}
         className="text-h1 font-display font-extrabold tracking-tight text-foreground sm:text-display"
       >
         {name}
-      </motion.h1>
+      </h1>
 
       {headline ? (
-        <motion.p
-          variants={staggerItem}
+        <p
           className="text-h4 font-display font-semibold text-foreground-secondary sm:text-h3"
         >
           {headline}
-        </motion.p>
+        </p>
       ) : null}
 
       {availability ? (
-        <motion.div variants={staggerItem}>
+        <div>
           <Badge variant="success">
             <span className="mr-1.5 inline-block size-1.5 rounded-full bg-success motion-safe:animate-pulse" />
             {availability}
           </Badge>
-        </motion.div>
+        </div>
       ) : null}
 
       {tagline ? (
-        <motion.p variants={staggerItem} className="text-body-lg text-foreground-secondary">
+        <p className="text-body-lg text-foreground-secondary">
           {tagline}
-        </motion.p>
+        </p>
       ) : null}
 
       {shortBio ? (
-        <motion.p variants={staggerItem} className="text-body text-foreground-muted">
+        <p className="text-body text-foreground-muted">
           {shortBio}
-        </motion.p>
+        </p>
       ) : null}
 
-      <motion.div variants={staggerItem} className="mt-2 flex flex-wrap items-center gap-4">
+      <div className="mt-2 flex flex-wrap items-center gap-4">
         <Button asChild size="lg" trailingIcon={ArrowRight}>
           <Link href={`#${SECTION_IDS.projects}`}>View Projects</Link>
         </Button>
@@ -104,7 +103,7 @@ export function HeroReveal({
         <Button asChild variant="outline" size="lg" leadingIcon={Send}>
           <Link href={`#${SECTION_IDS.contact}`}>Contact Me</Link>
         </Button>
-      </motion.div>
-    </motion.div>
+      </div>
+    </div>
   );
 }

@@ -1,7 +1,3 @@
-"use client";
-
-import { motion } from "motion/react";
-import { fadeInUp, revealOnScroll } from "@/lib/motion";
 import { EducationItem } from "./EducationItem";
 import type { Education } from "@/types/content";
 
@@ -19,9 +15,9 @@ export function EducationContent({ entries }: EducationContentProps) {
   return (
     <div className="flex flex-col gap-6">
       {entries.map((entry) => (
-        <motion.div key={entry.id} variants={fadeInUp} {...revealOnScroll}>
+        <div className="reveal" key={entry.id}>
           <EducationItem entry={entry} />
-        </motion.div>
+        </div>
       ))}
     </div>
   );

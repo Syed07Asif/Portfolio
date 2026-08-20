@@ -1,6 +1,3 @@
-"use client";
-
-import { motion } from "motion/react";
 import {
   BarChart3,
   Boxes,
@@ -21,7 +18,6 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
-import { revealOnScroll, staggerContainer, staggerItem } from "@/lib/motion";
 import type { SkillCategoryWithSkills, SkillWithCategory } from "@/types/content";
 
 /**
@@ -81,7 +77,7 @@ function SkillChip({ skill }: { skill: SkillWithCategory }) {
   const hasProficiency = skill.proficiency !== null;
 
   return (
-    <motion.li variants={staggerItem}>
+    <li>
       <span
         tabIndex={0}
         aria-label={hasProficiency ? `${skill.name} — ${skill.proficiency}% proficiency` : undefined}
@@ -96,22 +92,24 @@ function SkillChip({ skill }: { skill: SkillWithCategory }) {
           />
         ) : null}
       </span>
-    </motion.li>
+    </li>
   );
 }
 
+/**
+ * The chips inside a category used to cascade in on their own, with a
+ * per-instance Framer `transition` that scaled the per-item delay down as the
+ * list grew (so a 20-skill category didn't take 20× as long). That second
+ * level of stagger is gone with the move to CSS in Phase 24: the chips now
+ * simply reveal with their card, which is itself a `.reveal-group` child one
+ * level up. Nesting a second scroll-driven timeline inside an already-
+ * revealing card added motion nobody could really perceive — the chips are
+ * small, wrap across rows, and land within a few hundred ms of each other
+ * either way — in exchange for keeping this whole subtree client-side.
+ */
 function CategoryCard({ category }: { category: SkillCategoryWithSkills }) {
-  // Scales down as the list grows so a 20-skill category's chips finish
-  // cascading in well under a second instead of stacking 20× the default
-  // per-item delay — same staggerContainer variant, just a tighter timing
-  // for this instance via Framer's per-component `transition` override.
-  const skillStagger = {
-    staggerChildren: Math.min(0.06, 0.5 / Math.max(category.skills.length, 1)),
-    delayChildren: 0.02,
-  };
-
   return (
-    <motion.div variants={staggerItem}>
+    <div>
       <Card padding="lg" className="flex flex-col gap-5">
         <div className="flex items-start gap-4">
           {renderCategoryIcon(category.icon)}
@@ -123,17 +121,13 @@ function CategoryCard({ category }: { category: SkillCategoryWithSkills }) {
           </div>
         </div>
 
-        <motion.ul
-          variants={staggerContainer}
-          transition={skillStagger}
-          className="flex flex-wrap gap-2"
-        >
+        <ul className="flex flex-wrap gap-2">
           {category.skills.map((skill) => (
             <SkillChip key={skill.id} skill={skill} />
           ))}
-        </motion.ul>
+        </ul>
       </Card>
-    </motion.div>
+    </div>
   );
 }
 
@@ -152,14 +146,12 @@ export interface SkillsContentProps {
  */
 export function SkillsContent({ categories }: SkillsContentProps) {
   return (
-    <motion.div
-      variants={staggerContainer}
-      {...revealOnScroll}
-      className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 lg:grid-cols-3"
+    <div
+      className="reveal-group grid grid-cols-1 items-start gap-6 md:grid-cols-2 lg:grid-cols-3"
     >
       {categories.map((category) => (
         <CategoryCard key={category.id} category={category} />
       ))}
-    </motion.div>
+    </div>
   );
 }

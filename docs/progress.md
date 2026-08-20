@@ -15,19 +15,24 @@ against. Each phase's commit message
 also has a detailed writeup — `git show <hash>` for the full reasoning
 behind a specific phase if this summary isn't enough.
 
-### Start-of-session checklist (verified working at the end of Phase 23)
+### Start-of-session checklist (verified working at the end of Phase 24)
 
-> **Resuming mid-build?** Phases 1–23 are complete and pushed. **Phase 24
-> (verify and harden) is the next phase and has not been started** — its
-> full brief, the environment assessment, and the measurement traps to
-> avoid are all recorded in this file's "Phase 24" entry below. Read that
-> before planning it; it will save re-deriving what was already worked out.
+> **Resuming mid-build?** Phases 1–24 are complete. **Phase 24 (verify and
+> harden) is done** — accessibility, performance and a real test suite; read
+> its entry below for the measured before/after numbers, the eight defects it
+> found and fixed, and the three it found and deliberately did not fix.
+>
+> There is now a test suite: `npm test` (Vitest, 52) and `npm run test:e2e`
+> (Playwright, 33 × Chrome and Edge). Both need the local Supabase stack up
+> *and* a production server (`npm run build && npm run start`) — Playwright
+> will start one itself, but reuses an existing one. Run them before
+> believing any change is safe.
 
 Run these four commands first; each one's expected output is stated so a
 mismatch is obvious immediately rather than three steps later.
 
 ```bash
-git log --oneline -1        # expect: the Phase 24 tooling commit (see "Latest commit")
+git log --oneline -1        # expect: the Phase 24 commit (see "Latest commit")
 git status --short          # expect: empty — a clean tree
 docker ps --format '{{.Names}}' | grep supabase   # expect: 5 containers
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect: 000 (no server yet)
@@ -39,11 +44,18 @@ Then, in order:
    the five `supabase_*_syed-asif-portfolio` containers aren't listed, see
    "To stand up the local stack" below (and note the `--exclude` flag set
    there now keeps **both** `gotrue` and `storage-api`).
-2. **Start the dev server**: `preview_start` with `{"name":
-   "portfolio-dev"}`, or `npm run dev`. Port 3000 was free at the end of
-   Phase 21. If it *isn't*, read the "Dev server" bullet below before
-   trying to fix it — the obvious fix (`autoPort`) does not work, for a
-   non-obvious reason.
+2. **Start a server.** For *feature work*, `npm run dev` (or `preview_start`
+   with `{"name": "portfolio-dev"}`). For *anything you intend to measure or
+   test*, `npm run build && npm run start` instead — Phase 24's whole point
+   is that dev-mode numbers are meaningless, and Playwright's config expects
+   a production server on port 3000 (it starts one itself but reuses an
+   existing one). Port 3000 was free at the end of Phase 21. If it *isn't*,
+   read the "Dev server" bullet below before trying to fix it — the obvious
+   fix (`autoPort`) does not work, for a non-obvious reason.
+   **Do not run `npm run build` while Playwright or Lighthouse is running** —
+   they collide, and Playwright's `webServer` teardown will kill a server
+   Lighthouse is mid-run against (it reports `CHROME_INTERSTITIAL_ERROR`,
+   which looks like an app fault and is not one).
 3. **Confirm the stack is actually reachable**, not merely running — a
    container being "up" doesn't prove `.env.local`'s keys still match it
    (a `stop`/`start` cycle can regenerate the JWT signing material; a `db
@@ -58,6 +70,20 @@ Then, in order:
 4. **To log into `/admin`**, use `test-admin@example.com` /
    `Test-Admin-Pass-123!`. If it fails, the account was wiped by a `db
    reset` — recreating it is two commands, in the Supabase bullet below.
+   The E2E suite uses these same credentials (`tests/e2e/helpers.ts`), so a
+   wiped admin account fails every Playwright test at once.
+5. **Run the test suite before changing anything**, so you know whether a
+   later failure is yours:
+   ```bash
+   npm test           # Vitest — 52 tests, ~2s, needs Supabase only
+   npm run test:e2e   # Playwright — 33 tests × Chrome and Edge, ~7min
+   ```
+   Both were green at the end of Phase 24. The E2E suite creates rows
+   prefixed `zz-phase24` and deletes them in `afterAll`; if a run is
+   interrupted, `select slug from projects where slug like 'zz-%'` will show
+   leftovers to clean up. It also asserts the seeded
+   `customer-churn-prediction` project is left untouched, because an early
+   version of it really did unpublish that row.
 
 **Before running `npx supabase db reset`** (needed whenever a new migration
 is added): it wipes `auth.users` and `private.admins` too, so budget for
@@ -65,9 +91,18 @@ recreating that admin account afterward. This bit Phase 21.
 
 ## Where things stand
 
-**Phases 1–23 are done and verified, and all of it is pushed. Phase 24
-has not been started** — see its entry below for the brief and the
-groundwork. **The admin panel is complete** — every
+**Phases 1–24 are done and verified. Phase 24 (verify and harden) is
+complete** — axe-core reports **0 violations across all five audited pages**
+(3 violation types / 9 nodes before), Lighthouse is **100 desktop / 91–95
+mobile** with **CLS 0.000**, and there is now a real test suite (52 Vitest +
+33 Playwright, green in both Chrome and Edge). Its entry below has the full
+before/after tables, the eight defects it found and fixed — including a
+mobile menu whose overlay collapsed to **zero height**, and 20 transition
+utilities that generated **no CSS at all** — and the three it found and
+deliberately left, each with the reasoning. **The one target not met is
+homepage mobile LCP (3,340ms against 2,500ms)**; it is now bandwidth-bound,
+and the only remaining lever is an architectural decision about Framer
+Motion that belongs to the owner. **The admin panel is complete** — every
 sidebar destination is now a real editor; no `ComingSoon` placeholder pages
 remain (`components/admin/ComingSoon.tsx` itself is now unused and could be
 deleted whenever someone is tidying). Phase 21's own log entry below has the
@@ -2226,128 +2261,340 @@ schema has been dropped, all test uploads were deleted through the Storage
 API (direct `DELETE` on `storage.objects` is blocked by a trigger), and all
 five Supabase containers plus the local admin account are healthy.
 
-### Phase 24 — Verify and harden: REQUESTED, ASSESSED, NOT STARTED
+### Phase 24 — Verify and harden: DONE
 
-**Status: no source files were changed.** The phase was requested, the
-environment was assessed, the tooling was installed, and then the session
-was stopped by the user before any implementation began. This entry exists
-so the next session can start from the assessment rather than redo it.
+Measurement-first phase. Every number below was produced by running
+something, not by reading code; where a number could not be produced
+honestly, that is stated rather than estimated.
 
-**The brief, as given:**
+**Tooling now wired up** (`package.json`): `npm test` (Vitest, 52 tests),
+`npm run test:e2e` (Playwright, 33 tests × Chrome and Edge),
+`npm run test:e2e:edge`. Playwright drives the *installed* Chrome/Edge via
+`channel`, so no ~300MB browser download. `playwright.config.ts`,
+`vitest.config.ts` and `tests/setup.ts` are new.
 
-> GOAL: verify and harden. Report real numbers — do not say it "should be
-> fine".
->
-> **Part A — Accessibility.** (1) Run axe or Lighthouse a11y on the
-> homepage, a project page and three admin pages; fix every violation;
-> report before/after scores. (2) Complete a keyboard-only pass over the
-> whole site — navbar, mobile menu, every section, project cards, the
-> lightbox, all admin forms and tables; everything reachable, operable, with
-> a visible focus indicator; no keyboard trap except the intentional ones in
-> modals. (3) Verify colour contrast for every text/background pairing
-> including text over the hero background effect and text on hover states;
-> WCAG AA (4.5:1 body, 3:1 large); report any pairing adjusted.
-> (4) Screen-reader semantics: landmarks, headings, labels tied to inputs,
-> errors announced via `aria-live`, accessible names on icon-only buttons,
-> no reliance on colour alone. (5) Confirm nothing is hover-only — every
-> hover-revealed action also available on focus and touch. (6) Re-test the
-> full `prefers-reduced-motion` path across every animated component.
->
-> **Part B — Performance.** (7) Lighthouse on homepage, a media-heavy
-> project page and the admin dashboard, mobile *and* desktop profiles;
-> report LCP, CLS, INP, TBT and total bundle size before and after.
-> (8) Optimise: client → server components where interactivity isn't
-> needed; audit the JS bundle and remove/dynamically import anything heavy;
-> confirm modern image formats at correct sizes with proper `sizes`;
-> fonts subset and preloaded; no unnecessary third-party scripts.
-> (9) Profile the hero effect and scroll reveals — everything on
-> transform/opacity; report frame rate on a mid-range mobile profile with
-> CPU throttling. (10) Database: N+1 check, confirm indexes are used by real
-> query plans, confirm caching works (log cache hits).
-> Targets: homepage LCP < 2.5s mobile, CLS < 0.1, Lighthouse performance
-> 90+ desktop / 80+ mobile.
->
-> **Part C — Testing.** (11) Set up a test runner; cover admin login,
-> project create/edit/delete, publish/unpublish, file upload, slug
-> uniqueness, resume upload + activation, the data layer returning only
-> published content, and Zod edge cases. (12) E2E for the two critical
-> journeys — recruiter (land → about → skills → projects → open project →
-> download resume → contact) and owner (log in → create project → upload
-> media → preview → publish → verify live). (13) Responsive verification at
-> 360, 390, 768, 1024, 1440, 1920 px for every page including admin, with
-> screenshots. (14) Cross-browser Chrome + Edge minimum, Safari if
-> available; note differences.
->
-> Deliver a short written report of all measurements and everything changed.
+#### Part A — Accessibility
 
-**Tooling already installed** (in `package.json`, committed — the only
-thing this phase actually changed): `lighthouse ^13.4.1`, `axe-core
-^4.13.0`, `vitest ^4.1.11`, `@playwright/test ^1.62.1`. No Playwright
-browser binaries were downloaded; Playwright can drive the *installed*
-Chrome and Edge via `channel: "chrome"` / `"msedge"`, which avoids a
-~300 MB download — worth doing deliberately rather than running
-`npx playwright install`.
+**axe-core, 5 pages, before → after: 3 violation types / 9 nodes → 0 / 0.**
+Run by injecting the installed `axe.min.js` into a real authenticated
+browser session, which is what made the admin pages measurable at all.
 
-**Environment facts confirmed at assessment time**, so they don't need
-re-deriving:
+| Page | Before | After |
+| --- | --- | --- |
+| `/` | 2 types (label-content-name-mismatch ×2, color-contrast ×1) | **0** |
+| `/projects/[slug]` | 0 | **0** |
+| `/admin` | 0 | **0** |
+| `/admin/projects` | 0 | **0** |
+| `/admin/projects/new` | 2 types (color-contrast ×4, label ×2) | **0** |
 
-- `C:\Program Files\Google\Chrome\Application\chrome.exe` and
-  `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` both
-  exist, so Lighthouse CLI and a real cross-browser pass are both
-  genuinely possible on this machine.
-- Node v24.19.0, npm 11.17.0.
-- A **production** server (`npm run build && npm run start`) was running on
-  port 3000, and all five Supabase containers were healthy. Lighthouse must
-  be run against a production build, never `next dev` — dev-mode numbers
-  are meaningless for the targets above.
+Lighthouse accessibility score, homepage mobile: **96 → 100**.
 
-**Approach that had been worked out, and the traps it avoids** (every one
-of these is a lesson already paid for elsewhere in this file):
+Five real defects, each found by measurement:
 
-- **Admin pages can't be Lighthouse'd anonymously.** Two options: pass the
-  Supabase auth cookies to the CLI via `--extra-headers`, or run axe-core
-  by injection inside the already-authenticated Browser pane. The second is
-  more reliable; the first needs the cookies to be non-httpOnly, which was
-  not verified.
-- **axe-core by injection is the honest way to get real violation counts**
-  — read the installed `axe.min.js` off disk and evaluate it in the page via
-  `javascript_tool`, then run `axe.run()`. That works for authenticated
-  admin pages too.
-- **Contrast can be computed rather than eyeballed** — walk the DOM,
-  read computed `color`/`background-color`, compute the WCAG ratio. That
-  produces the "report any pairing you had to adjust" table with real
-  numbers, including hover states (force them by adding the hover class or
-  reading the CSS rule).
-- **LCP is not measurable from the Browser pane unless the user has the
-  pane actually displayed** — `document.visibilityState` is `"hidden"`
-  otherwise and the Paint Timing API never fires at all (Phase 8's lesson,
-  still true). Lighthouse CLI drives its own Chrome and does not have this
-  problem, which is the other reason to prefer it for Part B.
-- **INP is a field metric.** Lighthouse lab runs do not produce it; TBT is
-  the lab proxy. Report TBT and say so plainly rather than inventing an INP
-  number.
-- **CPU-throttled frame rate (item 9)** needs Chrome DevTools Protocol
-  throttling, which the Browser pane does not expose. Lighthouse's mobile
-  profile *does* apply 4× CPU throttling, so its TBT is a real throttled
-  number; a raw `requestAnimationFrame` FPS sample taken on this machine is
-  not a mid-range mobile figure and must not be presented as one.
-- **`NEXT_PUBLIC_*` is inlined at build time** (Phase 23) — relevant if any
-  measurement run needs a different Supabase URL.
-- **A stale `unstable_cache` entry survives deleting `.next/cache`**
-  (Phases 7 and 23) — relevant to item 10's "log cache hits", where the
-  cache's behaviour is the thing under test.
+1. **`label-content-name-mismatch` (WCAG 2.5.3)** on ProjectCard and every
+   contact card. Both carried a deliberate `aria-label` that *replaced* the
+   visible text, which breaks voice control. Fixed with `aria-labelledby`
+   pointing at the card's own visible title.
+2. **Status pills failed contrast over the hero background effect.**
+   `bg-success/15` is translucent, so the hero's chartreuse glow blob lifted
+   the effective backdrop from `#0a0d18` to `#425e39` and dropped the text
+   to **4.16:1**. Translucent status colours cannot be contrast-checked in
+   isolation, so they are gone: `--color-{success,warning,danger,info,accent}-surface`
+   are opaque tokens composited to the exact previous appearance. Every
+   pairing now passes (5.28–11.30:1).
+3. **`--color-foreground-muted` failed AA on `--color-surface-raised`**
+   (4.38:1). It passed on the other two surfaces, which is why it survived
+   this long; the admin panel hits the failing one because shadcn's inactive
+   Tabs triggers are `text-muted-foreground` on a raised surface. Raised
+   `#7d84a0` → `#8087a3`, the smallest change clearing 4.5:1 on the
+   lightest surface it is used on (now 5.46 / 5.00 / 4.56).
+4. **Three `sr-only` file inputs were focusable and unlabelled** — a
+   phantom tab stop plus a critical `label` violation. They are programmatic
+   triggers behind a visible button, so they are now `tabIndex={-1}` +
+   `aria-hidden`.
+5. **`SlugField`'s input had no `id`.** `FormControl` (a Radix `Slot`) hands
+   `id`/`aria-describedby`/`aria-invalid` to `SlugControl` as React props,
+   and it dropped them, so `<FormLabel for=...>` pointed at nothing. Now
+   forwarded. Its availability state also only ever changed an icon, which
+   announces nothing — added an `aria-live="polite"` region.
 
-**Two open scoping questions for the next session:**
+**Keyboard pass** (`tests/e2e/keyboard.spec.ts`, 4 tests): every focusable
+control on the homepage tab-reachable with a visible indicator; skip link is
+the first stop; mobile menu traps focus for 15 consecutive tabs and Escape
+closes it; admin form fields and the WAI-ARIA tabs arrow-key pattern work.
+Two defects fixed:
 
-1. Item 12's owner journey ends in "publish → verify it is live", which
-   means an E2E test that mutates real content. It needs either a
-   dedicated test row cleaned up afterwards (the pattern every prior phase
-   used) or a separate test database.
-2. Item 13 is 6 widths × ~10 routes ≈ 60 screenshots. Worth agreeing what
-   "every page" means before spending the time — the admin panel alone is
-   a dozen routes.
+- **The skip link had no focus ring at all** (`focus-visible:outline-none`,
+  no replacement) — the very first thing a keyboard user lands on.
+- **The mobile menu overlay collapsed to zero height.** Opening it sets
+  `isElevated`, which adds `backdrop-blur-md` to `<header>`; `backdrop-filter`
+  makes an element a *containing block* for `position: fixed` descendants, so
+  the overlay resolved `top: 80px; bottom: 0` against the 81px header instead
+  of the viewport. Confirmed by forcing the header's `backdrop-filter` to
+  `none` in the live page: height went **0px → 764px**. Easy to miss by eye
+  because the links still paint — they overflow — but they were laid out from
+  y=63, i.e. the first one sat *underneath* the fixed header and could not be
+  tapped, and the dimmed backdrop covered nothing. Fixed by rendering the
+  overlay as a sibling of `<header>` rather than a child.
+
+**Nothing is hover-only.** Public-site hover zooms already paired
+`group-focus-visible`. Three admin controls did not — ImageUploader's
+Replace/Remove overlay and MultiImageUploader's drag/remove buttons were
+`opacity-0` until hover while remaining focusable, and unreachable on touch.
+All now also respond to `focus-within`/`focus-visible`.
+
+**Reduced motion** (`tests/e2e/reveal-opacity.spec.ts`): asserts, by reading
+computed `animationName` on every element with the setting on, that **no
+animation is declared anywhere** — plus a mirror test that they *are*
+declared when motion is allowed, so the first test cannot pass by deletion.
+Found one real violation: **`Skeleton` used a bare `animate-pulse`**, so
+every loading placeholder pulsed indefinitely regardless of the setting —
+and a failed image (the seeded avatar placeholder, which does not exist)
+leaves it pulsing forever. Now `motion-safe:animate-pulse`.
+
+#### Part B — Performance
+
+Lighthouse, production build, median of **3 runs** per cell.
+
+| | perf | LCP | FCP | CLS | TBT | Speed Index | script |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Home mobile — before | 86 | 3723ms | 961ms | 0.000 | 195ms | 2209ms | 234KB |
+| Home mobile — **after** | **91** | **3340ms** | 917ms | 0.000 | **147ms** | **917ms** | **221KB** |
+| Home desktop — before | 100 | 713ms | 263ms | 0.000 | 3ms | 271ms | 234KB |
+| Home desktop — **after** | **100** | **695ms** | 257ms | 0.000 | 6ms | 291ms | **221KB** |
+| Project mobile — before | 89 | 3435ms | 769ms | 0.000 | 178ms | 2048ms | 241KB |
+| Project mobile — **after** | **95** | **2999ms** | 920ms | 0.000 | **72ms** | **920ms** | **227KB** |
+| Project desktop — before | 100 | 640ms | 221ms | 0.000 | 0ms | 230ms | 241KB |
+| Project desktop — **after** | **100** | **654ms** | 253ms | 0.000 | 0ms | 253ms | **227KB** |
+
+Against the stated targets: **CLS < 0.1 met** (0.000 everywhere),
+**desktop 90+ met** (100), **mobile 80+ met** (91 / 95), **homepage mobile
+LCP < 2.5s NOT met** (3340ms). See "known defects" below.
+
+**INP is not reported, because Lighthouse cannot produce it** — it is a
+field metric and lab runs have no interactions to measure. TBT is the lab
+proxy and is in the table.
+
+**The root cause, and what actually fixed it.** The public site's entire
+section tree was `"use client"` for one reason: Framer Motion's
+`revealOnScroll`/`staggerContainer`. None of those components had any
+interactivity. Measured on a 4×-CPU-throttled mobile profile with real
+(not simulated) throttling, the consequence was **a single 4,459ms
+main-thread hydration task**, during which the browser could not paint:
+first paint landed at 2,912ms with JS enabled versus ~1,633ms with it
+disabled. So the entrance animation moved to CSS (`.reveal` /
+`.reveal-group` / `.hero-in-group` / `.hero-blob-*` in
+`styles/globals.css`) and these became **Server Components**: `Section`,
+`Card`, `HeroReveal`, `HeroBackground`, `AboutContent`, `SkillsContent`,
+`ExperienceContent`, `EducationContent`, `AchievementsContent`,
+`CertificationGrid`, `ProjectGrid`, `ContactContent`. Framer Motion is
+*not* removed — it still drives the mobile menu, page transitions and the
+media lightbox, where a real enter/exit lifecycle earns its cost. Only the
+fire-and-forget "fade in as it scrolls past" moved.
+
+Result on the same probe: **largest main-thread task 4,459ms → 2,619ms**,
+and once the host was quiet, **185ms**.
+
+Two things this uncovered that are worth remembering:
+
+- **`animation-timeline: view()` is scroll-*linked*, not scroll-*triggered*.**
+  Unlike `whileInView` + `once: true`, progress tracks scroll position
+  continuously, so an element can *rest* mid-fade. With a percentage range
+  (`entry 0% cover 30%`) a section taller than the viewport sat at ~0.63
+  opacity indefinitely — Lighthouse flagged it as a contrast failure
+  (2.15:1 on the About heading) and it was a genuine one. A *length* offset
+  (`entry 0% entry 100px`) is bounded and element-height-independent.
+  `tests/e2e/reveal-opacity.spec.ts` now scrolls the real page and asserts
+  computed opacity, because the whole class of bug is invisible in source.
+- **Scroll-driven timelines are not free on mobile.** A/B-ing the same build
+  on a 4×-throttled profile, twice: total long-task time ~4,795ms with the
+  reveals on versus ~3,780ms off. They are therefore gated to
+  `min-width: 768px`; below that content is simply visible. The hero's own
+  entrance is time-based, costs nothing measurable, and is not gated.
+
+**Other Part B findings:**
+
+- **`duration-fast` / `duration-base` and friends generated no CSS at all.**
+  The `--duration-*` tokens existed in `tokens.css` from Phase 5 but were
+  never exported into `@theme`, so **20 usages** across Navbar, Footer,
+  AdminSidebar, MediaThumbnail and others were silently inert — every one of
+  those transitions was instant. Found by grepping the *built* stylesheet
+  for the utility rather than trusting that a class in a component means a
+  rule exists. Now exported.
+- **Images:** all six `next/image` usages already carry `sizes`. The
+  `w=1200` fetch on a 412px viewport is *correct* for DPR 2.625, not a bug.
+- **Fonts:** self-hosted by `next/font` (no Google Fonts request), subset
+  via `unicode-range` with only the latin subset preloaded,
+  `font-display: swap`, `crossorigin` set. Nothing to change.
+- **Third-party scripts: none.** The only external URLs in the markup are
+  content links (a Credly badge, `example.com` seed data).
+- **Database (item 10).** No N+1: every child relation is fetched with
+  PostgREST embedding in a single round trip (`project_technologies`,
+  `project_features`, `project_media`, `skills`). Caching verified with
+  `pg_stat_statements` **and a control**: one direct PostgREST query
+  incremented the projects-query counter by exactly 1, while **20 cached
+  page requests incremented it by 0**. Index usage **could not be verified
+  from real query plans** — every content table holds exactly one row, so
+  the planner correctly chooses a Seq Scan every time. Forcing
+  `enable_seqscan = off` confirms the indexes are applicable and would be
+  chosen (`projects_display_order_idx`, `projects_slug_key`,
+  `project_media_project_display_order_idx`, `skills_display_order_idx`).
+  That is the strongest claim the current data volume supports; it is not
+  the same as "the indexes are used in production".
+- **`lib/supabase/admin.ts` (service-role client) does not work and nothing
+  imports it.** The JWT correctly carries `role: service_role`, but no
+  migration ever issued `GRANT ... TO service_role`, so PostgREST answers
+  `42501 permission denied for table projects`. Latent, not live — found by
+  trying to use it for test fixtures. The tests authenticate as the admin
+  instead, which exercises the real RLS path anyway.
+
+#### Part C — Testing
+
+**Vitest — 52 tests, all passing.** Zod edge cases (slug format, the
+`optionalUrlSchema` vs `optionalAssetUrlSchema` distinction that has bitten
+this repo twice, publish-gate refinements, date ordering, the WhatsApp
+digit-count validator including a punctuated US number, file size/MIME
+bounds) and the data-access layer asserted against the **real** local
+Supabase stack: an unpublished fixture project must not appear in
+`fetchProjects`, `fetchProjectSlugs` or `fetchProjectBySlug`, and every row
+those return must be `published` in the database. A mocked client would pass
+whether or not the filter existed, so it is deliberately not mocked.
+
+**Playwright — 33 tests, passing in both Chrome and Edge.** Admin login
+(including a wrong password and an unauthenticated redirect), project
+create/edit/delete, publish/unpublish, slug uniqueness, real file upload to
+Supabase Storage, draft-mode preview, both critical journeys, the keyboard
+pass, reduced motion, and responsive.
+
+**Responsive:** 360 / 390 / 768 / 1024 / 1440 / 1920 px × 11 routes
+(5 public + 6 admin), **66 full-page screenshots per browser** in
+`test-results/responsive/<browser>/` (gitignored). The assertion that
+actually fails the build is **no horizontal overflow**, checked by comparing
+`documentElement.scrollWidth` to the viewport and naming the widest
+offending element. **No overflow at any width on any route.**
+
+**Cross-browser:** identical results in Chrome and Edge — 33/33 both, no
+behavioural differences observed. **Safari was not tested**: this is a
+Windows host and WebKit is not available. Worth noting one real exposure
+that leaves: the CSS scroll-driven reveals are `@supports`-guarded, so
+Safari simply shows content without animating — that path is reasoned about
+but unverified.
+
+**Three test-harness traps worth not re-learning:**
+
+- `.first()` on a row control in the admin list is **not** row-scoped. An
+  early version of the publish test matched the seeded
+  `customer-churn-prediction` row and really did unpublish real content
+  (restored immediately). The tests now filter with the screen's own search
+  box first. (`getByRole("row")` is unavailable — AdminTable renders a CSS
+  grid, not a semantic `<table>`.)
+- **`page.goto` and `page.request` share the browser context's HTTP cache**,
+  and the project route is served `stale-while-revalidate=31532400`. Polling
+  with either kept returning an unpublished project's content long after the
+  server had stopped serving it. Playwright's test-scoped `request` fixture
+  has its own cache and is what the assertions use. (The underlying fact is
+  real and worth knowing: a visitor who already loaded a project page can
+  keep seeing it from their own cache after it is unpublished.)
+- **Renaming a project moves its slug**, because `SlugField` re-derives the
+  slug from the name until the slug is hand-edited. Tests key on the row id.
+
+#### Known defects found and deliberately NOT fixed
+
+1. **Homepage mobile LCP is 3,340ms against a 2,500ms target.** Improved
+   from 3,723ms but short. It is now bandwidth-bound, not CPU-bound: the
+   *observed* LCP breakdown is 11ms TTFB + 160ms element render delay, and
+   the 3,340ms is Lighthouse's Lantern simulation of slow-4G over 374KB.
+   The only remaining lever big enough to close an ~840ms gap is removing
+   Framer Motion from the public bundle (40KB transferred, **73% unused**,
+   still loaded for the mobile menu, page transitions and lightbox).
+   That contradicts CLAUDE.md's fixed stack, so it is an owner decision
+   rather than something to do unilaterally.
+2. **`notFound()` in `/projects/[slug]` responds HTTP 200, not 404** — a
+   soft-404. Unrelated to publishing state and unrelated to Phase 23's
+   try/catch (the `notFound()` call sits outside it): `/totally-unknown-route`
+   correctly 404s, while `/projects/never-existed` returns 200. Next still
+   injects `<meta name="robots" content="noindex">` and no project content is
+   served. `dynamicParams = false` would fix the status but was rejected —
+   `generateStaticParams` runs only at build time, so every newly added
+   project would 404 until a redeploy, breaking the "adding a project is a
+   database row, not a deploy" principle.
+3. **`PageTransition` briefly duplicates DOM ids and `<h1>`.**
+   AnimatePresence's default sync mode keeps the outgoing and incoming pages
+   mounted together; measured at **~113ms, up to 2 `<h1>` and 7 duplicated
+   `id`s**. `<main>` is not duplicated and it settles clean. Transient but
+   real (duplicate ids are invalid HTML, and `aria-labelledby` can resolve to
+   the wrong element in that window). The fix is a trade-off — `mode="wait"`
+   costs ~150ms on every navigation, or the exiting page must be marked
+   `inert` — so it is recorded rather than chosen.
+
+#### Measurement caveat, stated plainly
+
+This host is memory-constrained (~1GB free of 7.7GB, with Docker, OneDrive
+and the repo all resident). A mid-phase Lighthouse batch produced home-mobile
+perf 60 / TBT 2,804ms — **not a regression**, but contention: an A/B on the
+same build with animations disabled moved together, and once the host was
+quiet the same build measured 91 / 147ms. Every number in the tables above
+is a 3-run median taken on the quiet host. If a future session sees wildly
+worse numbers, check free RAM before believing them.
+
+Two further host notes: `rm -rf .next` followed by a rebuild took **24.9
+minutes** because OneDrive re-syncs the whole directory, and a stale ISR
+artifact from an E2E test project (`zz-phase24-owner.segments`) caused an
+`EPERM: unlink` build failure that only clearing `.next` resolved.
 
 ## Recurring lessons worth not re-learning
+
+- **A Tailwind class in a component is not proof a CSS rule exists.** Phase
+  24 found `duration-fast`/`duration-base` used in 20 places across Navbar,
+  Footer, AdminSidebar and others, generating **no CSS whatsoever**: the
+  `--duration-*` tokens lived in `tokens.css` but were never exported into
+  `@theme`, so every one of those transitions was silently instant. This is
+  the same class of bug as the earlier `text-h2`/`cn()` collision, and the
+  same technique catches it — **grep the built stylesheet for the utility**
+  (`.next/static/chunks/*.css`), don't infer it from the source.
+- **`backdrop-filter` makes an element a containing block for
+  `position: fixed` descendants.** The mobile nav overlay was nested inside
+  `<header>`, and opening it added `backdrop-blur-md` to that header, so the
+  overlay resolved `top/bottom` against the 81px header instead of the
+  viewport and computed to **height 0**. The links still painted (they
+  overflow), which is exactly why eyeballing missed it for 24 phases — the
+  first one just sat underneath the fixed header, untappable. If a `fixed`
+  element mysteriously collapses, check every ancestor for `transform`,
+  `filter`, `backdrop-filter`, `perspective`, `contain` or `will-change`.
+- **`animation-timeline: view()` is scroll-*linked*, not scroll-*triggered*.**
+  It is not a drop-in for Framer's `whileInView` + `once: true`: progress
+  follows scroll position continuously, so an element can come to *rest*
+  part-way through its own fade. A *percentage* offset into `entry` is not a
+  fixed distance either — the range spans the element's own height, so a tall
+  section can sit at ~0.6 opacity indefinitely. Use a **length** offset
+  (`entry 0% entry 100px`) and assert computed opacity in a real browser.
+- **Automated a11y tooling must be run against real pages, including
+  authenticated ones.** Injecting the installed `axe.min.js` into a
+  logged-in Playwright session is what made `/admin/*` measurable at all,
+  and three of Phase 24's five axe findings were only on those pages.
+  Equally, Lighthouse's mobile viewport caught a contrast failure the
+  desktop-width axe run did not — audit at more than one width.
+- **On a shared local database, `.first()` on a row control is a live
+  hazard.** A Playwright test that clicked the first "Unpublish project"
+  switch really did unpublish the seeded project, because every published
+  row exposes an identically-named control. Filter to the row first (this
+  admin list has its own search box); never let a destructive selector be
+  ambiguous.
+- **Playwright's `page.goto`/`page.request` share the browser context's HTTP
+  cache.** With this project's `stale-while-revalidate=31532400`, polling
+  either one returned an unpublished project's content long after the server
+  had stopped serving it. Use the test-scoped `request` fixture when
+  asserting what the *server* does.
+- **Check free RAM before believing a bad performance number.** A mid-phase
+  Lighthouse batch on this host reported home-mobile perf 60 / TBT 2,804ms;
+  the same build measured 91 / 147ms once the machine was quiet. The tell was
+  an A/B whose control arm moved just as much. ~1GB free of 7.7GB, with
+  Docker, OneDrive and the repo resident, is enough to invalidate lab timings
+  entirely.
+- **`rm -rf .next` costs ~25 minutes here**, because OneDrive re-syncs the
+  whole directory afterward. Worth avoiding unless actually necessary — but
+  it *is* necessary when a stale ISR artifact from a deleted test row causes
+  `EPERM: unlink` during a build.
 
 - **`NEXT_PUBLIC_*` env vars are inlined at build time, so overriding one
   at runtime does nothing to a production server.** `next dev` reads
@@ -2622,7 +2869,24 @@ field components, `ImageUploader`/`FileUploader`/`ProjectMediaManager`, the
 public route, and an atomic single-active-resume swap via a Postgres
 function.
 
+**Phase 24 added a test suite and hardened both accessibility and
+performance** — see its entry above. Anything changed from here on should be
+checked with `npm test` and `npm run test:e2e` before it is believed.
+
 What's left:
+- **Three known defects Phase 24 found and deliberately did not fix**, each
+  because the fix is an owner-level trade-off rather than an oversight:
+  homepage mobile LCP (3,340ms vs a 2,500ms target, now bandwidth-bound and
+  gated on whether Framer Motion may leave the public bundle); a soft-404
+  (`notFound()` in `/projects/[slug]` responds 200); and PageTransition's
+  ~113ms window of duplicated DOM ids and `<h1>`s. Full reasoning in the
+  Phase 24 entry.
+- **Safari is still unverified** — Windows host, no WebKit. The CSS
+  scroll-driven reveals are `@supports`-guarded so Safari should simply show
+  content unanimated, but that path has been reasoned about, not run.
+- **`lib/supabase/admin.ts` is dead and broken** — no migration ever granted
+  `service_role` table privileges, so it answers `42501`. Nothing imports it;
+  either grant the privileges or delete the file.
 - **Deploying, which is now what most of the remaining value is gated on.**
   Phase 22 made this sharper rather than softer: `NEXT_PUBLIC_SITE_URL` is
   still `http://localhost:3000`, so *every* canonical URL, OG URL, sitemap

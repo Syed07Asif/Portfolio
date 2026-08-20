@@ -29,7 +29,17 @@
    * --------------------------------------------------------------------- */
   --color-foreground: #f2f4f8;
   --color-foreground-secondary: #b6bdcf;
-  --color-foreground-muted: #7d84a0;
+  /*
+   * Phase 24 raised this from #7d84a0. That value cleared WCAG AA on
+   * --color-background (5.24:1) and --color-surface (4.80:1) but came to
+   * 4.38:1 on --color-surface-raised — a real AA failure for body text, and
+   * the one the admin panel actually hits: shadcn's inactive Tabs triggers
+   * are `text-muted-foreground` (an alias of this token) on a raised
+   * surface, so every inactive tab on /admin/projects/new failed. #8087a3
+   * is the smallest change that clears 4.5:1 on the *lightest* surface the
+   * token is used on, so all three now pass: 5.46 / 5.00 / 4.56.
+   */
+  --color-foreground-muted: #8087a3;
 
   /* ---------------------------------------------------------------------
    * Colour — accent (chartreuse) + glow variants
@@ -50,6 +60,26 @@
   --color-warning: #eab308;
   --color-danger: #f16565;
   --color-info: #5b9df9;
+
+  /*
+   * Opaque tinted surfaces for status pills (components/ui/Badge.tsx).
+   *
+   * Each is the exact colour `bg-<status>/15` used to composite to over
+   * --color-background, so the pills look identical to before — but because
+   * they are now opaque, their contrast no longer depends on whatever
+   * happens to sit behind them. Phase 24 found this the hard way: the hero's
+   * availability Badge renders directly over HeroBackground's chartreuse
+   * glow blob, which lifted the effective backdrop from #0a0d18 to #425e39
+   * and dropped --color-success text to 4.16:1 — a real WCAG AA failure that
+   * only appeared over the background effect, and only at mobile widths
+   * where the blob sits behind the badge. A translucent status colour cannot
+   * be contrast-checked in isolation, so it is not used for one.
+   */
+  --color-success-surface: #142c28;
+  --color-warning-surface: #2c2616;
+  --color-danger-surface: #2d1a24;
+  --color-info-surface: #16233a;
+  --color-accent-surface: #2b3024;
 
   /* Kept for any existing "primary" references from Phase 1 — an alias of the accent, not a second colour system. */
   --color-primary: var(--color-accent);

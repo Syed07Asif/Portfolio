@@ -1,9 +1,5 @@
-"use client";
-
-import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { fadeInUp, revealOnScroll } from "@/lib/motion";
 import { Container } from "./Container";
 
 export type SectionSpacing = "default" | "lg";
@@ -33,10 +29,19 @@ export interface SectionProps {
 /**
  * The outer wrapper every top-level page section uses: consistent vertical
  * rhythm, the shared max-width via Container, a nav-anchor id, and a
- * built-in scroll-reveal (fadeInUp + revealOnScroll from lib/motion) so
- * individual sections never wire up their own viewport-triggered animation.
- * `scroll-mt-(--header-height)` offsets hash/anchor scrolling by the fixed
- * Navbar's height so a `#section` link doesn't land underneath it.
+ * built-in scroll-reveal so individual sections never wire up their own
+ * viewport-triggered animation. `scroll-mt-(--header-height)` offsets
+ * hash/anchor scrolling by the fixed Navbar's height so a `#section` link
+ * doesn't land underneath it.
+ *
+ * **This is a Server Component** (Phase 24). It used to be `"use client"`
+ * purely to run Framer Motion's `fadeInUp` + `revealOnScroll`, which meant
+ * every section on the homepage — none of which are interactive — was
+ * dragged into hydration. The reveal is now the `.reveal` class in
+ * styles/globals.css, a CSS scroll-driven animation with identical intent
+ * and no JS at all. See that file's comment for the measurements that
+ * motivated the change and how reduced-motion/unsupported browsers are
+ * handled.
  */
 export function Section({
   id,
@@ -47,14 +52,12 @@ export function Section({
   children,
 }: SectionProps) {
   return (
-    <motion.section
+    <section
       id={id}
       aria-labelledby={labelledBy}
-      variants={fadeInUp}
-      {...revealOnScroll}
-      className={cn("scroll-mt-(--header-height)", spacingClassName[spacing], className)}
+      className={cn("reveal scroll-mt-(--header-height)", spacingClassName[spacing], className)}
     >
       <Container className={containerClassName}>{children}</Container>
-    </motion.section>
+    </section>
   );
 }

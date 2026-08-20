@@ -86,7 +86,8 @@ export function Navbar({ navItems, wordmark }: NavbarProps) {
   const isElevated = isScrolled || mobileOpen;
 
   return (
-    <motion.header
+    <>
+      <motion.header
       className={cn(
         "fixed inset-x-0 top-0 z-40 border-b transition-colors duration-base ease-out-quart",
         isElevated
@@ -135,8 +136,28 @@ export function Navbar({ navItems, wordmark }: NavbarProps) {
           className="md:hidden"
           onClick={() => setMobileOpen((open) => !open)}
         />
-      </Container>
+        </Container>
+      </motion.header>
 
+      {/*
+        Rendered as a SIBLING of <header>, not inside it.
+
+        This overlay is `position: fixed` with `top: var(--header-height);
+        bottom: 0`, which should make it fill everything below the header.
+        Nested inside the header it did not: opening the menu sets
+        `isElevated`, which adds `backdrop-blur-md` to the header, and
+        `backdrop-filter` makes an element a *containing block* for fixed-
+        position descendants. The overlay then resolved its offsets against
+        the 81px header instead of the viewport and computed to **height 0**.
+
+        Phase 24 found this by measurement and confirmed the cause directly:
+        forcing the header's `backdrop-filter` to `none` in the live page took
+        the overlay from 0px to 764px. It is easy to miss by eye because the
+        links still paint — they overflow the zero-height box — but they were
+        laid out from y=63 downward, i.e. the first one sat *underneath* the
+        fixed header and could not be tapped, and the dimmed backdrop covered
+        nothing at all.
+      */}
       <AnimatePresence>
         {mobileOpen ? (
           <motion.div
@@ -179,6 +200,6 @@ export function Navbar({ navItems, wordmark }: NavbarProps) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-    </motion.header>
+    </>
   );
 }

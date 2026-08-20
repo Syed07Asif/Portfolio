@@ -33,12 +33,25 @@ function SlugControl({
   sourceValue,
   disabled,
   checkAvailability,
+  ...controlProps
 }: {
   value: string;
   onChange: (value: string) => void;
   sourceValue: string;
   disabled?: boolean;
   checkAvailability?: (slug: string) => Promise<boolean>;
+  /**
+   * `id`, `aria-describedby` and `aria-invalid`, injected by the surrounding
+   * `FormControl` (a Radix `Slot`). Because this is a *component* rather than
+   * a DOM element, Slot hands them over as plain React props and they are
+   * dropped unless something forwards them — which is exactly what used to
+   * happen: the `<Input>` below ended up with no `id`, so the `<FormLabel>`'s
+   * `for` pointed at nothing and axe failed it under `label` (critical) on
+   * /admin/projects/new. Spreading them onto the real input is the fix.
+   */
+  id?: string;
+  "aria-describedby"?: string;
+  "aria-invalid"?: boolean;
 }) {
   const [isManual, setIsManual] = useState(false);
   const [checkState, setCheckState] = useState<CheckState>(() =>
@@ -99,6 +112,7 @@ function SlugControl({
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <Input
+          {...controlProps}
           value={value}
           onChange={(event) => {
             setIsManual(true);
@@ -106,10 +120,23 @@ function SlugControl({
           }}
           disabled={disabled}
         />
-        {checkState === "checking" ? <Loader2Icon className="size-4 shrink-0 animate-spin text-foreground-muted" aria-label="Checking availability" /> : null}
-        {checkState === "available" ? <CheckIcon className="size-4 shrink-0 text-success" aria-label="Slug available" /> : null}
-        {checkState === "taken" ? <XIcon className="size-4 shrink-0 text-danger" aria-label="Slug already in use" /> : null}
+        {/*
+          Decorative here: the icons duplicate the status that the live region
+          below announces in words. They previously carried `aria-label`,
+          which on a bare <svg> is unreliable — and, more importantly, an icon
+          swapping in place produces no announcement at all, so a screen-reader
+          user got no feedback that a slug was already taken. Colour is never
+          the only signal either: each state has both an icon shape and text.
+        */}
+        {checkState === "checking" ? <Loader2Icon aria-hidden="true" className="size-4 shrink-0 animate-spin text-foreground-muted" /> : null}
+        {checkState === "available" ? <CheckIcon aria-hidden="true" className="size-4 shrink-0 text-success" /> : null}
+        {checkState === "taken" ? <XIcon aria-hidden="true" className="size-4 shrink-0 text-danger" /> : null}
       </div>
+      <span aria-live="polite" className="sr-only">
+        {checkState === "checking" ? "Checking slug availability" : null}
+        {checkState === "available" ? "Slug is available" : null}
+        {checkState === "taken" ? "Slug is already in use" : null}
+      </span>
       {checkState === "taken" ? <p className="text-caption text-danger">This slug is already in use.</p> : null}
       {isManual ? (
         <button

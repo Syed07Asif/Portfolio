@@ -153,6 +153,15 @@ export function FileUploader({ value, onChange, bucket, recordId, label = "File"
         ref={inputRef}
         type="file"
         accept={bucketConfig.allowedMimeTypes.join(",")}
+        // Hidden from both the tab order and the accessibility tree on
+        // purpose. This input is a programmatic trigger — the visible Button
+        // above calls `.click()` on it — so exposing it as well produced a
+        // second, invisible tab stop for the same action *and* failed axe's
+        // `label` rule (Phase 24 found both on /admin/projects/new).
+        // `sr-only` only hides it visually; it stays focusable and
+        // screen-reader-visible without these two attributes.
+        tabIndex={-1}
+        aria-hidden="true"
         className="sr-only"
         disabled={disabled}
         onChange={(event) => {

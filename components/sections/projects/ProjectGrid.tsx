@@ -1,9 +1,5 @@
-"use client";
-
-import { motion } from "motion/react";
 import { FolderKanban } from "lucide-react";
 import { EmptyState } from "@/components/ui";
-import { revealOnScroll, staggerContainer, staggerItem } from "@/lib/motion";
 import { selectProjects } from "@/lib/projects";
 import { ProjectCard } from "./ProjectCard";
 import type { Project } from "@/types/content";
@@ -38,16 +34,14 @@ export function ProjectGrid({ projects, featuredOnly, limit, cardHeadingLevel }:
   }
 
   return (
-    <motion.div
-      variants={staggerContainer}
-      {...revealOnScroll}
-      className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
+    <div
+      className="reveal-group grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
     >
       {items.map((project) => (
-        <motion.div key={project.id} variants={staggerItem}>
+        <div key={project.id}>
           <ProjectCard project={project} headingLevel={cardHeadingLevel} />
-        </motion.div>
+        </div>
       ))}
-    </motion.div>
+    </div>
   );
 }

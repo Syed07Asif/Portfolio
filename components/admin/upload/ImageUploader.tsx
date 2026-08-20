@@ -122,8 +122,15 @@ export function ImageUploader({ value, onChange, bucket, recordId, label = "Imag
 
         {isUploading ? <UploadProgress percent={progress} label={label} /> : null}
 
+        {/*
+          The overlay below carries `focus-within` as well as `hover`: it
+          holds the Replace and Remove buttons, which stay focusable at
+          `opacity-0`, so a keyboard user could tab straight onto a control
+          they cannot see. On touch there is no hover state at all, which made
+          them effectively unreachable. Phase 24 item 5 — nothing hover-only.
+        */}
         {!isUploading && displayUrl && !disabled ? (
-          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-background/60 opacity-0 transition-opacity hover:opacity-100">
+          <div className="absolute inset-0 flex items-center justify-center gap-2 bg-background/60 opacity-0 transition-opacity hover:opacity-100 focus-within:opacity-100">
             <Button
               type="button"
               variant="secondary"
@@ -156,6 +163,15 @@ export function ImageUploader({ value, onChange, bucket, recordId, label = "Imag
         ref={inputRef}
         type="file"
         accept={bucketConfig.allowedMimeTypes.join(",")}
+        // Hidden from both the tab order and the accessibility tree on
+        // purpose. This input is a programmatic trigger — the visible Button
+        // above calls `.click()` on it — so exposing it as well produced a
+        // second, invisible tab stop for the same action *and* failed axe's
+        // `label` rule (Phase 24 found both on /admin/projects/new).
+        // `sr-only` only hides it visually; it stays focusable and
+        // screen-reader-visible without these two attributes.
+        tabIndex={-1}
+        aria-hidden="true"
         className="sr-only"
         disabled={disabled}
         onChange={(event) => {

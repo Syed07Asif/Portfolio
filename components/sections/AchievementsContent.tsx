@@ -1,7 +1,3 @@
-"use client";
-
-import { motion } from "motion/react";
-import { fadeInUp, revealOnScroll } from "@/lib/motion";
 import { AchievementItem } from "./AchievementItem";
 import type { Achievement } from "@/types/content";
 
@@ -22,9 +18,9 @@ export function AchievementsContent({ items }: AchievementsContentProps) {
   return (
     <ul className="flex flex-col gap-4">
       {items.map((item) => (
-        <motion.li key={item.id} variants={fadeInUp} {...revealOnScroll}>
+        <li className="reveal" key={item.id}>
           <AchievementItem achievement={item} />
-        </motion.li>
+        </li>
       ))}
     </ul>
   );

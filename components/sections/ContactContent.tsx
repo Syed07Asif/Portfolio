@@ -1,14 +1,22 @@
-"use client";
-
-import { motion } from "motion/react";
-import { toast } from "sonner";
-import { Check, Copy, Download } from "lucide-react";
-import { useState } from "react";
+import { Download } from "lucide-react";
 import { Button, Card } from "@/components/ui";
-import { revealOnScroll, staggerContainer, staggerItem } from "@/lib/motion";
+import { CopyEmailButton } from "./CopyEmailButton";
 import { isExternalContactHref, resolveContactHref, resolveContactIcon } from "@/lib/contactLinks";
 import { RESUME_ROUTE } from "@/lib/constants";
 import type { ContactLink } from "@/types/content";
+
+/**
+ * Each contact card is named by its own two visible spans via
+ * `aria-labelledby` ("Email" + the address), rather than the equivalent
+ * `aria-label={`${link.label}: ${link.value}`}` this used to carry. Phase
+ * 24's axe run failed that under `label-content-name-mismatch` (WCAG 2.5.3,
+ * "Label in Name") — an `aria-label` substitutes a string a voice-control
+ * user has no way to know, whereas referencing the visible nodes makes the
+ * accessible name identical to what is on screen. Same fix, same reason, as
+ * ProjectCard's — see its doc comment.
+ */
+const labelId = (id: string) => `contact-${id}-label`;
+const valueId = (id: string) => `contact-${id}-value`;
 
 export interface ContactContentProps {
   contactLinks: ContactLink[];
@@ -34,11 +42,7 @@ export function ContactContent({ contactLinks, hasResume }: ContactContentProps)
   return (
     <div className="flex flex-col gap-10">
       {contactLinks.length > 0 ? (
-        <motion.div
-          variants={staggerContainer}
-          {...revealOnScroll}
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
-        >
+        <div className="reveal-group grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {contactLinks.map((link) => {
             const href = resolveContactHref(link);
             if (!href) return null;
@@ -47,13 +51,13 @@ export function ContactContent({ contactLinks, hasResume }: ContactContentProps)
             const external = isExternalContactHref(href);
 
             return (
-              <motion.div key={link.id} variants={staggerItem}>
+              <div key={link.id}>
                 <Card
                   interactive
                   href={href}
                   hover="lift"
                   padding="lg"
-                  aria-label={`${link.label}: ${link.value}`}
+                  aria-labelledby={`${labelId(link.id)} ${valueId(link.id)}`}
                   className="flex h-full items-center gap-4"
                   target={external ? "_blank" : undefined}
                   rel={external ? "noreferrer noopener" : undefined}
@@ -62,14 +66,18 @@ export function ContactContent({ contactLinks, hasResume }: ContactContentProps)
                     <Icon className="size-5" aria-hidden="true" />
                   </span>
                   <span className="flex min-w-0 flex-col">
-                    <span className="text-body font-semibold text-foreground">{link.label}</span>
-                    <span className="truncate text-small text-foreground-muted">{link.value}</span>
+                    <span id={labelId(link.id)} className="text-body font-semibold text-foreground">
+                      {link.label}
+                    </span>
+                    <span id={valueId(link.id)} className="truncate text-small text-foreground-muted">
+                      {link.value}
+                    </span>
                   </span>
                 </Card>
-              </motion.div>
+              </div>
             );
           })}
-        </motion.div>
+        </div>
       ) : null}
 
       {hasClosingActions ? (
@@ -83,26 +91,5 @@ export function ContactContent({ contactLinks, hasResume }: ContactContentProps)
         </div>
       ) : null}
     </div>
-  );
-}
-
-function CopyEmailButton({ email }: { email: string }) {
-  const [copied, setCopied] = useState(false);
-
-  async function handleCopy() {
-    try {
-      await navigator.clipboard.writeText(email);
-      setCopied(true);
-      toast.success("Email copied to clipboard");
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      toast.error("Couldn't copy automatically — please select and copy the address manually.");
-    }
-  }
-
-  return (
-    <Button variant="secondary" size="lg" leadingIcon={copied ? Check : Copy} onClick={handleCopy}>
-      {copied ? "Copied" : "Copy email address"}
-    </Button>
   );
 }

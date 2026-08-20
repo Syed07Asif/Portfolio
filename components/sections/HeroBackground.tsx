@@ -1,70 +1,43 @@
-"use client";
-
-import { motion, useInView } from "motion/react";
-import { useRef } from "react";
 import { cn } from "@/lib/utils";
-
-/**
- * Slow ambient drift for the hero's background glows — deliberately much
- * slower than lib/motion.ts's UI-transition durations (that scale exists
- * for discrete reveals/transitions, not continuous ambient motion, so it
- * isn't reused here). Only `x`/`y`/`scale` (transform) and the blobs'
- * static opacity are ever touched, so this stays fully GPU-compositable —
- * nothing here ever animates a layout-affecting property.
- */
-const DRIFT = {
-  ease: "easeInOut",
-  repeat: Infinity,
-  repeatType: "mirror",
-} as const;
 
 interface BlobConfig {
   /** Position/size — corners only, deliberately kept clear of the text column. Hidden on smaller breakpoints to cap effect cost on mobile. */
   className: string;
-  animate: { x: [number, number]; y: [number, number]; scale: [number, number] };
-  duration: number;
+  /** Drift keyframe class from styles/globals.css — one per blob so each moves on its own path and period. */
+  driftClassName: string;
 }
 
 const BLOBS: BlobConfig[] = [
-  {
-    className: "-top-24 -left-24 size-80 bg-accent sm:size-96",
-    animate: { x: [0, 30], y: [0, 24], scale: [1, 1.06] },
-    duration: 18,
-  },
-  {
-    className: "top-1/3 -right-20 hidden size-72 bg-glow-cyan sm:block",
-    animate: { x: [0, -24], y: [0, 20], scale: [1, 1.08] },
-    duration: 22,
-  },
-  {
-    className: "-bottom-24 left-1/4 hidden size-64 bg-glow-warm lg:block",
-    animate: { x: [0, 20], y: [0, -18], scale: [1, 1.05] },
-    duration: 20,
-  },
+  { className: "-top-24 -left-24 size-80 bg-accent sm:size-96", driftClassName: "hero-blob-a" },
+  { className: "top-1/3 -right-20 hidden size-72 bg-glow-cyan sm:block", driftClassName: "hero-blob-b" },
+  { className: "-bottom-24 left-1/4 hidden size-64 bg-glow-warm lg:block", driftClassName: "hero-blob-c" },
 ];
 
 /**
  * Purely decorative (`aria-hidden`) ambient background for Hero — large,
- * heavily blurred, low-opacity color washes in the corners, never behind
- * the text column. `useInView` cancels the drift the moment the hero
- * scrolls out of the viewport (and doesn't restart it until it scrolls back
- * in) so nothing keeps animating off-screen; reduced motion is handled for
- * free by MotionProvider (components/motion/MotionProvider.tsx), which
- * collapses transform-based `motion.*` animation to an instant/static
- * equivalent app-wide.
+ * heavily blurred, low-opacity colour washes in the corners, never behind the
+ * text column.
+ *
+ * **This is a Server Component** (Phase 24). It was `"use client"` to run a
+ * Framer Motion drift plus a `useInView` that paused it off-screen; both are
+ * now the `hero-blob-*` keyframes in styles/globals.css. The drift only ever
+ * touched `transform`, so it was already compositor-only — moving it to CSS
+ * keeps that and removes the observer, the hydration cost, and the client
+ * boundary sitting directly in the hero's critical path. Pausing off-screen
+ * is no longer needed: a compositor-only transform animation on an
+ * off-screen layer costs effectively nothing.
+ *
+ * Reduced motion is handled in the stylesheet — the whole `hero-blob-*`
+ * block lives inside `@media (prefers-reduced-motion: no-preference)`, so the
+ * blobs are simply static washes for anyone who asked for less motion.
  */
 export function HeroBackground() {
-  const ref = useRef<HTMLDivElement>(null);
-  const isInView = useInView(ref, { amount: 0.1 });
-
   return (
-    <div ref={ref} aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
-      {BLOBS.map((blob, index) => (
-        <motion.div
-          key={index}
-          className={cn("absolute rounded-full opacity-25 blur-3xl", blob.className)}
-          animate={isInView ? blob.animate : undefined}
-          transition={{ ...DRIFT, duration: blob.duration }}
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+      {BLOBS.map((blob) => (
+        <div
+          key={blob.driftClassName}
+          className={cn("absolute rounded-full opacity-25 blur-3xl", blob.className, blob.driftClassName)}
         />
       ))}
     </div>
