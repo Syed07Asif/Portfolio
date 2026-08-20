@@ -243,12 +243,18 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`. No new dependencies were needed for Phase 20.
-- **Latest commit:** `117bbd2` — "Phase 24 groundwork: measurement/test
+- **Latest commit:** `b427693` — "Phase 24: verify and harden —
+  accessibility, performance, and a test suite," pushed to `origin/develop`
+  (39 files — `git show b427693 --stat`; the commit message carries the full
+  reasoning, and this file's Phase 24 entry the narrative, including the
+  eight defects found by measuring and the three deliberately left). This
+  very edit (recording that hash) is a docs-only follow-up on top of it, so
+  expect `git log --oneline` to show one commit above `b427693` that changed
+  nothing but `docs/progress.md`.
+  Before that, `117bbd2` — "Phase 24 groundwork: measurement/test
   tooling, and a handoff note in progress.md," pushed to `origin/develop`.
   It touches only `package.json`, `package-lock.json` and this file; no
-  application code. This very edit (recording that hash) is a docs-only
-  follow-up on top of it, so expect `git log --oneline` to show one commit
-  above `117bbd2` that changed nothing but `docs/progress.md`.
+  application code.
   Before that, `88902c5` — "Phase 23: resilience — error pages,
   loading states, and a real empty-state audit," pushed to `origin/develop`
   (53 files — `git show 88902c5 --stat`; the commit message carries the full
@@ -2526,6 +2532,50 @@ but unverified.
    the wrong element in that window). The fix is a trade-off — `mode="wait"`
    costs ~150ms on every navigation, or the exiting page must be marked
    `inert` — so it is recorded rather than chosen.
+
+#### How to reproduce these measurements
+
+The *tests* are committed (`tests/`, `vitest.config.ts`,
+`playwright.config.ts`). The **ad-hoc measurement scripts were not** — they
+lived in a scratch directory and are gone. They are all small, and this is
+what they did, so a future session can rebuild any of them in a few minutes
+rather than re-deriving the approach:
+
+- **Lighthouse**, always against `npm run build && npm run start`, never
+  `next dev`, and always a 3-run median because single runs on this host
+  vary widely:
+  ```bash
+  npx lighthouse http://localhost:3000/ --quiet --output=json \
+    --output-path=out.json --only-categories=performance,accessibility \
+    --chrome-flags="--headless=new --no-sandbox --disable-gpu" [--preset=desktop]
+  ```
+  Omit `--preset=desktop` for the mobile profile (which applies 4x CPU +
+  slow-4G *simulated* throttling). Note the CLI exits with a Windows
+  chrome-launcher `kill` stack trace *after* writing the report — the file
+  is fine; don't read that as a failure.
+- **axe-core on authenticated pages**: launch Playwright with
+  `channel: "chrome"`, log in through the real form, then
+  `page.evaluate(readFileSync("node_modules/axe-core/axe.min.js"))` followed
+  by `await window.axe.run(document, { resultTypes: ["violations"] })`.
+  This is the only way `/admin/*` gets audited at all. Audit at more than one
+  width — Lighthouse's 412px mobile viewport caught a contrast failure the
+  1280px axe run did not.
+- **Real (not simulated) throttling**, which is what found the hydration
+  task: a Playwright CDP session with
+  `Emulation.setCPUThrottlingRate {rate: 4}` plus
+  `Network.emulateNetworkConditions` at 1.6Mbps/150ms, then a
+  `PerformanceObserver` on `longtask` and `largest-contentful-paint`.
+  Lighthouse's mobile LCP is a Lantern *projection*; this is a measurement.
+- **Contrast**: walk the DOM reading computed `color`/`background-color` and
+  apply the WCAG formula, or compute token pairs directly. Both were used —
+  the token matrix found the `foreground-muted` failure, the live DOM found
+  the hero-glow one.
+- **Cache hits**: `pg_stat_statements`, and **always with a control**. The
+  first attempt counted PostgREST container log lines, saw zero, and would
+  have "proved" the cache worked — except a deliberate direct query also
+  produced zero lines, because PostgREST isn't request-logging at that level.
+  The control is what made the real measurement (1 query = +1 call, 20 cached
+  page loads = +0) trustworthy.
 
 #### Measurement caveat, stated plainly
 
