@@ -21,7 +21,7 @@ Run these four commands first; each one's expected output is stated so a
 mismatch is obvious immediately rather than three steps later.
 
 ```bash
-git log --oneline -1        # expect: f23012b, or one docs-only commit on top of it
+git log --oneline -1        # expect: 88902c5, or one docs-only commit on top of it
 git status --short          # expect: empty — a clean tree
 docker ps --format '{{.Names}}' | grep supabase   # expect: 5 containers
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect: 000 (no server yet)
@@ -195,7 +195,16 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`. No new dependencies were needed for Phase 20.
-- **Latest commit:** `f23012b` — "Phase 22: SEO, social sharing, structured
+- **Latest commit:** `88902c5` — "Phase 23: resilience — error pages,
+  loading states, and a real empty-state audit," pushed to `origin/develop`
+  (53 files — `git show 88902c5 --stat`; the commit message carries the full
+  reasoning and this file's Phase 23 entry the narrative, including the five
+  defects found by deliberately breaking things). Note it also commits the
+  `nextjs-agent-rules` block `next dev` appends to `CLAUDE.md` on every run —
+  that block is tool-generated and self-restoring, so committing it is what
+  keeps `git status` clean. This very edit is a docs-only follow-up on top,
+  made after confirming the push succeeded.
+  Before that, `f23012b` — "Phase 22: SEO, social sharing, structured
   data, and a semantic HTML audit," pushed to `origin/develop` (37 files —
   `git show f23012b --stat` for the full list; the commit message carries
   the full reasoning, and this file's Phase 22 log entry below carries the
