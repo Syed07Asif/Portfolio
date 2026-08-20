@@ -21,7 +21,7 @@ Run these four commands first; each one's expected output is stated so a
 mismatch is obvious immediately rather than three steps later.
 
 ```bash
-git log --oneline -1        # expect: the Phase 22 commit (see "Latest commit" below)
+git log --oneline -1        # expect: f23012b, or one docs-only commit on top of it
 git status --short          # expect: empty — a clean tree
 docker ps --format '{{.Names}}' | grep supabase   # expect: 5 containers
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect: 000 (no server yet)
@@ -132,6 +132,16 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
 - **Branch:** `develop` (all phase work happens here; `main` is still just
   the Phase 1 scaffold — nothing has been merged up yet). Tracks
   `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
+- **Server state at the end of Phase 22:** a *production* server (`npm run
+  build && npm run start`, not `next dev`) was left running on port 3000 —
+  that's what the metadata/sitemap/OG-card verification was done against,
+  since metadata routes only prerender in a real build. A new session
+  should expect port 3000 to be occupied by it, and can either reuse it or
+  stop it (`Get-NetTCPConnection -LocalPort 3000 -State Listen` ->
+  `Stop-Process`) before starting `next dev`. Note `.next` now holds a
+  production build, so the first `npm run dev` after this will recompile
+  from cold. The historical note below is from Phase 21 and still describes
+  the dev-server behaviour accurately.
 - **Dev server: NOT running** as of the end of the Phase 21 session
   (verified — `curl http://localhost:3000/` got no response). For most of
   that session a *different* chat session's server held port 3000; it has
@@ -159,7 +169,16 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`. No new dependencies were needed for Phase 20.
-- **Latest commit:** `8b9d2f6` — "Phases 20-21: Projects admin module and
+- **Latest commit:** `f23012b` — "Phase 22: SEO, social sharing, structured
+  data, and a semantic HTML audit," pushed to `origin/develop` (37 files —
+  `git show f23012b --stat` for the full list; the commit message carries
+  the full reasoning, and this file's Phase 22 log entry below carries the
+  narrative, including what could *not* be verified and why). This very
+  edit — recording that hash here — is a small docs-only follow-up on top
+  of it, made after confirming the push succeeded, so expect `git log
+  --oneline` to show one commit above `f23012b` that touched nothing but
+  `docs/progress.md`.
+  Before that, `8b9d2f6` — "Phases 20-21: Projects admin module and
   the complete admin panel," pushed to `origin/develop` (74 files —
   `git show 8b9d2f6 --stat` for the full list; the commit message carries
   the full reasoning, including why both phases landed as *one* commit:
