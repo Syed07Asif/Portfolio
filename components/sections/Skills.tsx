@@ -24,8 +24,8 @@ export async function Skills() {
   if (categoriesWithSkills.length === 0) return null;
 
   return (
-    <Section id={SECTION_IDS.skills}>
-      <SectionHeading eyebrow="What I Work With" heading="Skills & Tools" />
+    <Section id={SECTION_IDS.skills} labelledBy={`${SECTION_IDS.skills}-heading`}>
+      <SectionHeading eyebrow="What I Work With" heading="Skills & Tools" headingId={`${SECTION_IDS.skills}-heading`} />
       <SkillsContent categories={categoriesWithSkills} />
     </Section>
   );

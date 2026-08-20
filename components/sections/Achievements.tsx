@@ -10,8 +10,8 @@ export async function Achievements() {
   if (items.length === 0) return null;
 
   return (
-    <Section id={SECTION_IDS.achievements}>
-      <SectionHeading eyebrow="Recognition" heading="Achievements" />
+    <Section id={SECTION_IDS.achievements} labelledBy={`${SECTION_IDS.achievements}-heading`}>
+      <SectionHeading eyebrow="Recognition" heading="Achievements" headingId={`${SECTION_IDS.achievements}-heading`} />
       <AchievementsContent items={items} />
     </Section>
   );

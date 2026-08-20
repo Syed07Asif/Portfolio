@@ -13,6 +13,8 @@ export interface ProjectGridProps {
   projects: Project[];
   featuredOnly?: boolean;
   limit?: number;
+  /** Passed straight through to each ProjectCard's title — see its own prop doc for why the two callers differ. */
+  cardHeadingLevel?: 2 | 3;
 }
 
 /**
@@ -22,7 +24,7 @@ export interface ProjectGridProps {
  * sort/filter function, so this component itself never hand-rolls sorting
  * logic.
  */
-export function ProjectGrid({ projects, featuredOnly, limit }: ProjectGridProps) {
+export function ProjectGrid({ projects, featuredOnly, limit, cardHeadingLevel }: ProjectGridProps) {
   const items = selectProjects(projects, { featuredOnly, limit });
 
   if (items.length === 0) {
@@ -43,7 +45,7 @@ export function ProjectGrid({ projects, featuredOnly, limit }: ProjectGridProps)
     >
       {items.map((project) => (
         <motion.div key={project.id} variants={staggerItem}>
-          <ProjectCard project={project} />
+          <ProjectCard project={project} headingLevel={cardHeadingLevel} />
         </motion.div>
       ))}
     </motion.div>

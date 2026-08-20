@@ -10,8 +10,8 @@ export async function Certifications() {
   if (certifications.length === 0) return null;
 
   return (
-    <Section id={SECTION_IDS.certifications}>
-      <SectionHeading eyebrow="Credentials" heading="Certifications" />
+    <Section id={SECTION_IDS.certifications} labelledBy={`${SECTION_IDS.certifications}-heading`}>
+      <SectionHeading eyebrow="Credentials" heading="Certifications" headingId={`${SECTION_IDS.certifications}-heading`} />
       <CertificationGrid certifications={certifications} />
     </Section>
   );

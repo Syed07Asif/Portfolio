@@ -6,6 +6,15 @@ const MAX_VISIBLE_TECHNOLOGIES = 4;
 
 export interface ProjectCardProps {
   project: Project;
+  /**
+   * Semantic level for the card's title. Defaults to 3, which is correct
+   * inside the homepage's Projects section (whose own SectionHeading is an
+   * h2). The `/projects` index has no section heading between its h1 and
+   * these cards, so it passes 2 rather than letting the document skip a
+   * level. Only the tag changes — the visual treatment is the same either
+   * way, same contract as SectionHeading's own `level`.
+   */
+  headingLevel?: 2 | 3;
 }
 
 /**
@@ -20,8 +29,9 @@ export interface ProjectCardProps {
  * more likely to clip the "don't clutter the card" instruction than add
  * anything — status is one tap away on the detail page instead.
  */
-export function ProjectCard({ project }: ProjectCardProps) {
+export function ProjectCard({ project, headingLevel = 3 }: ProjectCardProps) {
   const technologies = project.technologies.slice(0, MAX_VISIBLE_TECHNOLOGIES);
+  const Heading = `h${headingLevel}` as "h2" | "h3";
 
   return (
     <Card
@@ -46,7 +56,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
       </div>
 
       <div className="flex flex-1 flex-col gap-2">
-        <h3 className="text-h4 font-display font-semibold text-foreground">{project.name}</h3>
+        <Heading className="text-h4 font-display font-semibold text-foreground">{project.name}</Heading>
 
         {project.short_description ? (
           <p className="line-clamp-2 text-small text-foreground-muted">{project.short_description}</p>

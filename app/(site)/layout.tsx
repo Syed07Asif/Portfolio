@@ -4,25 +4,64 @@ import { Footer } from "@/components/layout/Footer";
 import { PageTransition } from "@/components/layout/PageTransition";
 import { getActiveResume, getContactLinks, getProfile, getSiteSettings } from "@/lib/data";
 import { DEFAULT_NAV_ITEMS, DEFAULT_WORDMARK } from "@/lib/constants";
+import { OG_IMAGE_SIZE, absoluteUrl, truncateForMeta } from "@/lib/seo";
 
 const FALLBACK_TITLE = "Syed Asif — Analytics & ML Engineer";
 const FALLBACK_DESCRIPTION = "Portfolio of Syed Asif, Analytics & ML Engineer.";
 
 /**
- * Public-site title/description/OG image — moved here from the root layout
- * (Phase 17) since it's driven by siteSettings, which has no meaning for
- * `/admin`. Next merges metadata root-to-leaf, so this simply overrides the
- * root's generic fallback title for every route under this group.
+ * Public-site metadata defaults, driven by siteSettings (which has no
+ * meaning for `/admin`, hence living here rather than in the root layout).
+ *
+ * The title *template* is the important part: every page under this group
+ * sets a bare title ("Projects", a project's own name) and Next renders it
+ * as "Projects | Syed Asif". The homepage opts out via `title.absolute`,
+ * since `site_title` already contains the name and would otherwise read
+ * "Syed Asif — Analytics & ML Engineer | Syed Asif".
+ *
+ * The `openGraph`/`twitter` blocks here are defaults for any route that
+ * doesn't build its own. Note Next *replaces* these objects wholesale when
+ * a child page defines its own rather than merging field by field — which
+ * is exactly why every page goes through `buildPageMetadata` (lib/seo.ts)
+ * instead of setting one or two OG fields and hoping the rest is inherited.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const siteSettings = await getSiteSettings();
+  const [siteSettings, profile] = await Promise.all([getSiteSettings(), getProfile()]);
+
+  const brand = profile?.full_name ?? DEFAULT_WORDMARK;
+  const title = siteSettings?.site_title ?? FALLBACK_TITLE;
+  const description = truncateForMeta(siteSettings?.meta_description) ?? FALLBACK_DESCRIPTION;
+  const defaultImages = siteSettings?.og_image_url
+    ? [{ url: absoluteUrl(siteSettings.og_image_url), alt: title, ...OG_IMAGE_SIZE }]
+    : undefined;
 
   return {
-    title: siteSettings?.site_title ?? FALLBACK_TITLE,
-    description: siteSettings?.meta_description ?? FALLBACK_DESCRIPTION,
-    ...(siteSettings?.og_image_url
-      ? { openGraph: { images: [{ url: siteSettings.og_image_url }] } }
-      : {}),
+    title: { default: title, template: `%s | ${brand}` },
+    description,
+    applicationName: brand,
+    authors: [{ name: brand, url: absoluteUrl("/") }],
+    creator: brand,
+    publisher: brand,
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+    },
+    openGraph: {
+      type: "website",
+      siteName: brand,
+      title,
+      description,
+      url: absoluteUrl("/"),
+      locale: "en_US",
+      ...(defaultImages ? { images: defaultImages } : {}),
+    },
+    twitter: {
+      card: defaultImages ? "summary_large_image" : "summary",
+      title,
+      description,
+      ...(defaultImages ? { images: defaultImages } : {}),
+    },
   };
 }
 

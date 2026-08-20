@@ -24,10 +24,11 @@ export async function Projects() {
   const hasFeatured = projects.some((project) => project.featured);
 
   return (
-    <Section id={SECTION_IDS.projects}>
+    <Section id={SECTION_IDS.projects} labelledBy={`${SECTION_IDS.projects}-heading`}>
       <SectionHeading
         eyebrow="Selected Work"
         heading="Projects"
+        headingId={`${SECTION_IDS.projects}-heading`}
         action={
           <Button asChild variant="outline" trailingIcon={ArrowRight}>
             <Link href="/projects">View all projects</Link>

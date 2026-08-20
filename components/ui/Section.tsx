@@ -16,6 +16,13 @@ const spacingClassName: Record<SectionSpacing, string> = {
 export interface SectionProps {
   /** Anchor id nav links point to, e.g. `href="#projects"`. */
   id: string;
+  /**
+   * Id of the heading that names this section — normally the matching
+   * `SectionHeading`'s own `headingId`. An unnamed `<section>` is an
+   * anonymous region in a screen reader's landmark list; naming it is what
+   * makes "Projects" appear there instead of "region".
+   */
+  labelledBy?: string;
   spacing?: SectionSpacing;
   className?: string;
   /** Passed through to the inner Container. */
@@ -33,6 +40,7 @@ export interface SectionProps {
  */
 export function Section({
   id,
+  labelledBy,
   spacing = "default",
   className,
   containerClassName,
@@ -41,6 +49,7 @@ export function Section({
   return (
     <motion.section
       id={id}
+      aria-labelledby={labelledBy}
       variants={fadeInUp}
       {...revealOnScroll}
       className={cn("scroll-mt-(--header-height)", spacingClassName[spacing], className)}

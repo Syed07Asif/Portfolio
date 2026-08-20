@@ -15,13 +15,13 @@ against. Each phase's commit message
 also has a detailed writeup — `git show <hash>` for the full reasoning
 behind a specific phase if this summary isn't enough.
 
-### Start-of-session checklist (verified working at the end of Phase 21)
+### Start-of-session checklist (verified working at the end of Phase 22)
 
 Run these four commands first; each one's expected output is stated so a
 mismatch is obvious immediately rather than three steps later.
 
 ```bash
-git log --oneline -1        # expect: dc3479a (see "Latest commit" below)
+git log --oneline -1        # expect: the Phase 22 commit (see "Latest commit" below)
 git status --short          # expect: empty — a clean tree
 docker ps --format '{{.Names}}' | grep supabase   # expect: 5 containers
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect: 000 (no server yet)
@@ -59,11 +59,23 @@ recreating that admin account afterward. This bit Phase 21.
 
 ## Where things stand
 
-**Phases 1–21 are done and verified. The admin panel is complete** — every
+**Phases 1–22 are done and verified. The admin panel is complete** — every
 sidebar destination is now a real editor; no `ComingSoon` placeholder pages
 remain (`components/admin/ComingSoon.tsx` itself is now unused and could be
 deleted whenever someone is tidying). Phase 21's own log entry below has the
 full narrative, including two real bugs found live.
+
+**Phase 22 (SEO and social sharing) is done and verified** — per-route
+metadata built from the database, generated 1200x630 Open Graph cards per
+project, schema.org JSON-LD (validated clean at validator.schema.org),
+`sitemap.xml`/`robots.txt`, and a semantic-HTML audit run against the real
+served markup that found and fixed five genuine defects. Reference material
+is in [docs/architecture.md](./architecture.md)'s "SEO & social sharing"
+section; the narrative, including four things that could only be found by
+running them, is in this file's Phase 22 log entry below. **Two things it
+could not verify are recorded there honestly**: Google's Rich Results Test
+is behind a reCAPTCHA, and every external social-card validator needs a
+public URL the undeployed site doesn't have yet.
 
 Phase 18 ("shared admin
 infrastructure") had one earlier, failed attempt — removed entirely and
@@ -1848,8 +1860,184 @@ Storage bucket**, confirmed by a single row-count query at the end.
   `resolvePublishedAt`) rather than burning time on the widget —
   `SelectField` itself is already-proven Phase 20 infrastructure.
 
+### Phase 22 — SEO, social sharing, structured data, and a semantic HTML audit
+
+The goal was concrete and non-abstract: a recruiter pastes a project link
+into LinkedIn or WhatsApp, and the preview has to look deliberate. That
+drove every decision below.
+
+**New files:** `lib/seo.ts` (origin, canonical rules, `buildPageMetadata`),
+`lib/jsonLd.ts` (schema.org builders), `components/seo/JsonLd.tsx` (+ its
+README), `lib/data/sitemap.ts`, `app/sitemap.ts`, `app/robots.ts`,
+`app/(site)/projects/[slug]/opengraph-image.tsx`, and
+`app/(site)/projects/[slug]/twitter-image.tsx`. Full reference material is
+in [docs/architecture.md](./architecture.md)'s new "SEO & social sharing"
+section — this entry covers what was learned, not what was built.
+
+**The one architectural decision worth remembering:** every route's
+`generateMetadata` goes through `buildPageMetadata` rather than assembling
+`openGraph`/`twitter` by hand. Next merges `Metadata` root-to-leaf, but it
+**replaces the `openGraph` and `twitter` objects wholesale** on override
+rather than merging field by field — so a page that sets only
+`openGraph.title` silently drops the layout's image, `url`, and
+`site_name`. That failure is completely invisible locally; it shows up as a
+broken preview in someone else's chat window, days later. One builder makes
+it structurally impossible.
+
+The title template lives in `app/(site)/layout.tsx`, not the root layout,
+because it's driven by `site_settings`/`profile` and means nothing for
+`/admin` (which has its own). The homepage passes `title.absolute` because
+`site_title` already contains the name — without it, the tab reads "Syed
+Asif — Analytics & ML Engineer | Syed Asif".
+
+**Four things that had to be discovered by running them, not by reading
+docs:**
+
+1. **Route segment config cannot be re-exported.** `twitter-image.tsx`
+   re-exports the OG card module so the two images can never drift, and
+   re-exporting `revalidate` along with it **fails the build outright**
+   ("Next.js can't recognize the exported `revalidate` field in route. It
+   mustn't be reexported"). Segment config is parsed statically out of the
+   source, so it has to be declared literally in each file.
+   `generateStaticParams`, `generateImageMetadata`, `size` and
+   `contentType` all re-export fine — it is specifically the segment-config
+   fields that don't.
+2. **`generateImageMetadata` wants `size: { width, height }`, nested.**
+   Spreading flat `width`/`height` keys onto the returned object compiles,
+   type-checks, and produces **no `og:image:width`/`og:image:height` tags
+   at all** — silently. Caught only by reading the actual served `<head>`,
+   which is the general lesson: metadata bugs don't throw.
+3. **The generated card's URL cannot be reconstructed by hand.** Next
+   serves it from `/projects/<slug>/opengraph-image-<hash>/card?<hash>`;
+   the un-hashed `/projects/<slug>/opengraph-image` path **404s**, verified
+   directly with curl. The project's JSON-LD `image` initially pointed at
+   that un-hashed path — structured data advertising a dead image. It now
+   uses the project's own `cover_image_url`/`logo_url`, which are real
+   resolvable assets. If a future phase needs the card's URL in a non-`<head>`
+   context, it has to come out of Next's own metadata, not be built by
+   string concatenation.
+4. **Satori will take the whole card down over a missing backdrop.** Handed
+   a 404 HTML body as an image it throws, so the card's background image is
+   **`HEAD`-probed before use** and degrades to no backdrop rather than to
+   no card. This is not hypothetical here: every asset path in
+   `supabase/seed.sql` is a placeholder that was never uploaded, so the
+   probe rejects them on every local render and the fallback path is the
+   one actually exercised today. SVG is excluded from the probe too —
+   satori's SVG support is partial enough to render an empty box.
+
+**Design tokens in the OG card.** Satori renders without a browser, so it
+can resolve neither Tailwind utilities nor CSS custom properties. The card
+therefore needs literal hex values, collected into one `OG_COLORS` constant
+that mirrors `styles/tokens.css`. This is the **only** sanctioned
+duplication of a token value in the codebase (CLAUDE.md's rule 4 exists to
+stop one-off literals appearing inside components; here there is no
+alternative) — if a colour token changes, that constant is the one place
+that has to follow.
+
+**Semantic HTML audit.** Run against the actual served markup of all five
+public routes with a script that counted landmarks, built the heading
+outline, and flagged unnamed sections, missing `alt`, and generic link
+text — not by reading components. Five real findings, all fixed:
+
+1. **`/styleguide` rendered a second `<main>`** nested inside the site
+   layout's — invalid HTML, and two "main" landmarks for assistive tech to
+   choose between. Now a `<div>`.
+2. **`/projects` skipped a heading level**: `h1` "All Projects" straight to
+   the cards' `h3`, because unlike the homepage's Projects section there's
+   no `h2` in between. `ProjectCard` now takes a `headingLevel` prop (the
+   index passes 2, the homepage keeps 3) — only the tag changes, the visual
+   treatment is identical.
+3. **`/resume/unavailable` and `/projects/*` not-found had no `h1` at
+   all** — their entire content is an `EmptyState`, whose title was a `<p>`.
+   `EmptyState` now takes `titleAs`, defaulting to `"p"` (correct when it
+   sits inside a section that already has a heading) and set to `"h1"` on
+   those two dead-end pages.
+4. **Every `<section>` was anonymous.** `Section` gained `labelledBy` and
+   `SectionHeading` gained `headingId`; all nine homepage sections, the
+   project detail page's blocks, and `StyleguideSection` now name
+   themselves, so a landmark list reads "Projects" instead of "region".
+5. **Two link labels didn't say where they went** — "GitHub" and "Live
+   Demo" are now "View source on GitHub" and "Open live demo", and the
+   prev/next project links carry an `sr-only` "Previous project:" prefix.
+
+Structure on the detail page also changed: the project is now an
+`<article>`, with the prev/next links as a `<nav>` **outside** it (they're
+about other projects, not this one).
+
+**Two things the audit checked and found already correct**, worth recording
+so they don't get "fixed" later: every `alt=""` on the public site is
+deliberate and paired with an accessible name on the wrapper (a gallery
+thumbnail sits inside a button already labelled "Open Screenshot 3";
+`Avatar`/`ProjectCardImage` fallbacks use `role="img"` + `aria-label`), and
+`lib/media.ts`'s `resolveMediaLabel` already prefers the admin-authored
+`alt_text` over everything else. Adding `alt` text to those images would
+cause double announcement, not improve anything.
+
+**Verified, and how:**
+
+- `next build` clean; the route table shows `sitemap.xml`, `robots.txt`,
+  the OG card and the Twitter card all prerendered (`●`/`○`), one card per
+  published slug.
+- `robots.txt` and `sitemap.xml` fetched from a real production server
+  (`npm run build && npm run start`): correct disallows, and `lastmod`
+  values that match the real `updated_at` in Postgres.
+- The generated card fetched and **looked at**: 1200×630, 58 KB PNG,
+  correct tokens, project name, description, brand line and tech pill.
+  `x-nextjs-cache: HIT` on the response — proof it is served from the cache
+  rather than regenerated per request.
+- Every `<meta>` tag on all three public routes read out of the served
+  `<head>` — titles, descriptions, canonicals, full OG and Twitter sets.
+- **Structured data validated at validator.schema.org: 0 errors, 0 warnings**
+  on both the homepage graph (Person + WebSite) and the project graph
+  (SoftwareSourceCode + BreadcrumbList).
+- The 404 page's single `h1` confirmed in the **live DOM**, not the HTML —
+  `notFound()` thrown from a dynamic segment streams the not-found UI in the
+  RSC payload *after* the shell is flushed, so a regex over the raw HTML
+  reports zero `<h1>` even though the rendered page has exactly one. Check
+  the DOM, not the HTML string, for anything below a `notFound()`.
+
+**What could not be verified, and why** (stated plainly rather than papered
+over):
+
+- **Google's Rich Results Test** is gated behind reCAPTCHA (confirmed: a
+  live `recaptcha/api2/anchor` frame on the page), and its tab UI doesn't
+  respond in the non-displayed Browser pane. Solving it is off-limits, so
+  this one is left for the user to run by pasting the same snippet, or
+  against the real URL once deployed. Note that of the types used here only
+  `BreadcrumbList` is a Google rich-result feature at all — `Person`,
+  `WebSite`, `CreativeWork` and `SoftwareSourceCode` are understood but not
+  reported as rich results, so a "no items detected" on the homepage would
+  be expected, not a failure.
+- **External Open Graph / Twitter card validators** all fetch a public URL.
+  There isn't one yet — the site is undeployed and `NEXT_PUBLIC_SITE_URL`
+  is still `http://localhost:3000`, which also means every canonical and OG
+  URL currently resolves to localhost. Both fix themselves the moment the
+  site is deployed with a real origin; until then the tags were verified by
+  reading the served markup directly.
+
 ## Recurring lessons worth not re-learning
 
+- **Metadata bugs do not throw.** Phase 22 shipped two that compiled,
+  type-checked, and lint-passed while producing silently wrong output:
+  `generateImageMetadata` given flat `width`/`height` keys instead of a
+  nested `size` object emitted no `og:image:width`/`height` tags at all,
+  and a hand-built OG image URL 404'd because Next serves metadata images
+  from a hashed path (`/projects/<slug>/opengraph-image-<hash>/card?<hash>`)
+  that can't be reconstructed. Neither was visible in the source. **Read the
+  actual served `<head>` and curl the actual URLs** — a clean build proves
+  nothing about metadata, exactly as it proves nothing about rendering
+  (see the tailwind-merge lesson above).
+- **Route segment config (`revalidate`, `dynamic`, ...) cannot be
+  re-exported from another module** — it's parsed statically out of each
+  file's source, and re-exporting it fails the build with "It mustn't be
+  reexported". Everything else (`generateStaticParams`,
+  `generateImageMetadata`, `size`, `contentType`, `default`) re-exports
+  fine, which is what makes the failure surprising.
+- **`notFound()` thrown from a dynamic segment streams its UI in the RSC
+  payload *after* the HTML shell is flushed.** A regex over the raw HTML
+  response reports zero `<h1>` on a 404 page that genuinely renders exactly
+  one. For anything below a `notFound()`, assert against the live DOM
+  (`document.querySelectorAll`), not the HTML string.
 - **Verify against the real thing, not a simulated harness.** Phase 3's
   RLS was "proven" against a hand-rolled Postgres container that happened
   to grant privileges the way I assumed Supabase does by default — wrong
@@ -2070,6 +2258,19 @@ public route, and an atomic single-active-resume swap via a Postgres
 function.
 
 What's left:
+- **Deploying, which is now what most of the remaining value is gated on.**
+  Phase 22 made this sharper rather than softer: `NEXT_PUBLIC_SITE_URL` is
+  still `http://localhost:3000`, so *every* canonical URL, OG URL, sitemap
+  entry and JSON-LD `@id` currently points at localhost. They are all
+  derived from that one variable (`lib/seo.ts`'s `SITE_URL`) and all become
+  correct the moment it points at a real origin — but nothing about the
+  social previews can be validated externally until then.
+- **A real default OG image.** `site_settings.og_image_url` is seeded as
+  `/images/og-cover.png`, a placeholder that doesn't exist, so the homepage
+  and `/projects` currently advertise a broken `og:image` and the generated
+  project cards fall back to no backdrop. Project pages are unaffected
+  otherwise (their card is generated, not uploaded). Uploading one real
+  1200x630 image through the admin's Settings screen fixes all of it.
 - **Provisioning a real hosted Supabase project** — still only a local
   stack exists (see "Where things stand" above); needed before the site
   can go live, per

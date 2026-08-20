@@ -13,6 +13,7 @@ export default function ProjectNotFound() {
     <Container className="flex flex-col items-center py-(--space-section-y)">
       <EmptyState
         icon={FolderSearch}
+        titleAs="h1"
         title="Project not found"
         description="This project doesn't exist, or isn't published yet. It may have moved or been renamed."
       />

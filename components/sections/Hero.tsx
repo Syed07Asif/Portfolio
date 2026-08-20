@@ -30,10 +30,15 @@ export async function Hero() {
   const availability = profile?.availability_status ?? null;
 
   return (
-    <section id={SECTION_IDS.hero} className="relative overflow-hidden scroll-mt-(--header-height)">
+    <section
+      id={SECTION_IDS.hero}
+      aria-labelledby={`${SECTION_IDS.hero}-heading`}
+      className="relative overflow-hidden scroll-mt-(--header-height)"
+    >
       <HeroBackground />
       <Container className="relative z-10 flex flex-col justify-center lg:min-h-(--hero-min-height)">
         <HeroReveal
+          headingId={`${SECTION_IDS.hero}-heading`}
           name={name}
           headline={headline}
           tagline={tagline}

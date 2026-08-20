@@ -18,6 +18,8 @@ export interface SectionHeadingProps {
   action?: ReactNode;
   /** Semantic heading level. Defaults to h2 — use h3/h4 for a heading nested inside another section's h2. */
   level?: SectionHeadingLevel;
+  /** DOM id for the heading element, so the enclosing Section can point `aria-labelledby` at it and give its landmark a real name. */
+  headingId?: string;
   className?: string;
 }
 
@@ -31,6 +33,7 @@ export function SectionHeading({
   description,
   action,
   level = 2,
+  headingId,
   className,
 }: SectionHeadingProps) {
   const Heading = `h${level}` as "h2" | "h3" | "h4";
@@ -41,7 +44,9 @@ export function SectionHeading({
         {eyebrow ? (
           <p className="text-caption font-medium uppercase tracking-wider text-accent">{eyebrow}</p>
         ) : null}
-        <Heading className={cn(headingClassNameByLevel[level], "text-foreground")}>{heading}</Heading>
+        <Heading id={headingId} className={cn(headingClassNameByLevel[level], "text-foreground")}>
+          {heading}
+        </Heading>
         {description ? (
           <p className="text-body-lg text-foreground-secondary max-w-2xl">{description}</p>
         ) : null}

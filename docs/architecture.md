@@ -458,3 +458,144 @@ Vercel preview deployments; 404s (via `notFound()`) when
 `VERCEL_ENV === "production"`, and carries `robots: { index: false, follow:
 false }` regardless, so it never appears in search results even before that
 gate matters.
+
+## SEO & social sharing
+
+Added in Phase 22. Everything below is generated from the database — a new
+project gets a title, a description, a canonical URL, a social card, its own
+structured data, and a sitemap entry without a single line of new code.
+
+### Where each piece lives
+
+| Concern | File |
+| --- | --- |
+| Origin, canonical/OG URL rules, the shared metadata builder | `lib/seo.ts` |
+| schema.org JSON-LD builders (pure functions over content rows) | `lib/jsonLd.ts` |
+| The structured-data render seam | `components/seo/JsonLd.tsx` |
+| Generated 1200×630 project cards | `app/(site)/projects/[slug]/opengraph-image.tsx` |
+| `sitemap.xml` | `app/sitemap.ts` |
+| `robots.txt` | `app/robots.ts` |
+| `updated_at` reads that exist only for the sitemap | `lib/data/sitemap.ts` |
+
+### Titles
+
+`metadataBase` is set once, in the true root layout, because both route
+trees need it to resolve relative canonical/OG URLs. The **title template**
+lives one level down, in `app/(site)/layout.tsx`, where `site_settings` is
+actually meaningful — `title: { default: site_title, template: "%s | <full_name>" }`.
+
+So every page sets a bare title and gets the brand appended: `"Projects"` →
+`Projects | Syed Asif`, a project's own name → `Project Name | Syed Asif`.
+The homepage opts out with `title.absolute`, since `site_title` already
+contains the name and would otherwise read *"Syed Asif — Analytics & ML
+Engineer | Syed Asif"*. `/admin` never sees any of this — it has its own
+`{ default: "Admin", template: "%s — Admin" }` and is `noindex`.
+
+### Why every page goes through `buildPageMetadata`
+
+Next merges `Metadata` root-to-leaf, but it **replaces** the `openGraph` and
+`twitter` objects wholesale rather than merging them field by field. A page
+that sets only `openGraph.title` therefore silently drops the layout's
+image, `url`, and `site_name` — a bug that is invisible locally and only
+shows up as a broken preview in someone else's chat window.
+`buildPageMetadata` exists so that can't happen: one call produces the
+canonical, the full Open Graph object, and a matching Twitter card, all
+describing the same page with the same strings.
+
+### Social cards
+
+Project pages use Next's `opengraph-image` metadata-file convention, with
+`twitter-image.tsx` re-exporting the same module so `og:image` and
+`twitter:image` can never drift. The card is drawn with `next/og`
+(satori) — which renders without a browser and so understands neither
+Tailwind utilities nor CSS custom properties, making inline literals
+unavoidable. Those literals are collected into one `OG_COLORS` constant that
+mirrors `styles/tokens.css`; it is the single sanctioned exception to
+CLAUDE.md's "no arbitrary values" rule, and the only place in the codebase
+where a token value is duplicated.
+
+The card shows the project name, its short description, the person's name
+and headline, and up to four technologies. Its backdrop is the project's
+`cover_image_url`, falling back to `site_settings.og_image_url` when the
+project has none. Because any of those paths can point at an asset that was
+never uploaded, the backdrop is **probed with a HEAD request first** —
+satori throws on a 404 HTML body handed to it as an image, which would take
+down the whole card rather than just its background.
+
+**Caching:** a metadata route is cached exactly like a page.
+`generateStaticParams` pre-renders one card per published project at build
+time, and `revalidate = 3600` matches the detail page's own ISR window.
+Nothing regenerates per request.
+
+### Structured data
+
+One structured-data script per page, carrying an `@graph` of linked nodes
+rather than several separate scripts:
+
+- **Homepage** — `Person` (`jobTitle`, `alumniOf` from `education`,
+  `knowsAbout` from `skills`, `sameAs` from `contact_links`, `image`,
+  `worksFor` only when an experience row is actually `is_current`) plus
+  `WebSite`, cross-referenced by `@id`.
+- **`/projects`** — `BreadcrumbList`.
+- **`/projects/[slug]`** — `SoftwareSourceCode` when the project has a
+  `github_url`, `CreativeWork` otherwise, plus `BreadcrumbList`.
+- **Blog** — `buildArticleJsonLd` exists and is gated behind
+  `blogJsonLdEnabled(siteSettings)`, but nothing calls it yet: the blog has
+  no public route, and Article markup for a page no crawler can reach would
+  describe a page that doesn't exist.
+
+Two rules the builders enforce: **nothing is claimed that the page doesn't
+visibly render**, and every field whose source column is empty is dropped
+rather than filled with a plausible default. Certifications and achievements
+are deliberately unmodelled — schema.org's
+`EducationalOccupationalCredential` wants accrediting-body identity this
+schema doesn't store, and there is no honest type for a generic
+"achievement".
+
+A draft being previewed (`draftMode`) emits **no** structured data and is
+marked `noindex`: preview renders unpublished content at a real URL, and the
+one thing that must never happen is a crawler catching an unfinished project
+there.
+
+### Sitemap and robots
+
+`app/sitemap.ts` lists the homepage, `/projects`, and every published
+project, with `lastModified` taken from real `updated_at` values.
+`lib/data/sitemap.ts` supplies them and tags its cached reads with the same
+`CACHE_TAGS` the admin panel already revalidates, so publishing a change
+updates the sitemap's dates along with the page. The homepage's date is the
+newest `updated_at` across *every* table it renders, since it is one page
+composed of all of them — and RLS makes that correct for free, because anon
+only ever sees published rows.
+
+`app/robots.ts` allows everything except `/admin` (which covers
+`/admin/login` and the `/admin/preview/*` draft-mode toggles), `/styleguide`,
+and `/resume/unavailable`. Each of those is *also* `noindex` in its own
+route metadata, because the two mechanisms do different jobs: robots.txt
+asks a crawler not to **fetch** a URL, `noindex` asks it not to **list**
+one. A URL that is only disallowed can still be listed if something links to
+it; a URL that is only noindexed still gets fetched. Both together are what
+actually keeps a page out.
+
+### Semantic HTML
+
+Audited across the whole public site in Phase 22 (see
+[docs/progress.md](./progress.md)'s Phase 22 entry for the findings). The
+standing rules:
+
+- **Exactly one `h1` per page**, and no skipped levels. `SectionHeading`
+  takes a `level` prop and `ProjectCard` a `headingLevel` one for exactly
+  this reason — the same card is an `h3` inside the homepage's Projects
+  section (which supplies the `h2`) and an `h2` on `/projects`, where it
+  follows the page's `h1` directly.
+- **One `main` element, in `app/(site)/layout.tsx`.** No page renders its own.
+- **Every `section` carries an accessible name** via `aria-labelledby`
+  pointing at its own heading (`Section`'s `labelledBy` prop,
+  `SectionHeading`'s `headingId`), so a landmark list reads "Projects"
+  rather than "region".
+- **Link text says where the link goes.** No "click here"/"read more".
+- **Alt text** is either descriptive or deliberately empty *with* an
+  accessible name supplied by the wrapper — an image inside a button already
+  labelled "Open Screenshot 3" takes an empty alt so it isn't announced
+  twice. `lib/media.ts`'s `resolveMediaLabel` is the one place that decision
+  is made for project media (`alt_text` → `title` → a generated label).

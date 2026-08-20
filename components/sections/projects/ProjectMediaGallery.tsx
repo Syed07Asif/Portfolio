@@ -18,8 +18,10 @@ export function ProjectMediaGallery({ media }: ProjectMediaGalleryProps) {
   if (media.length === 0) return null;
 
   return (
-    <section className="flex flex-col gap-4">
-      <h2 className="text-h3 font-display font-semibold text-foreground">Gallery</h2>
+    <section aria-labelledby="project-gallery" className="flex flex-col gap-4">
+      <h2 id="project-gallery" className="text-h3 font-display font-semibold text-foreground">
+        Gallery
+      </h2>
       <MediaGallery media={media} />
     </section>
   );

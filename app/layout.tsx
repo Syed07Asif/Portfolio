@@ -3,6 +3,7 @@ import { Inter, Sora } from "next/font/google";
 import "@/styles/globals.css";
 import { MotionProvider } from "@/components/motion/MotionProvider";
 import { Toaster } from "@/components/ui";
+import { METADATA_BASE } from "@/lib/seo";
 
 const sora = Sora({
   variable: "--font-sora",
@@ -29,7 +30,7 @@ const inter = Inter({
  * resolution), with a generic fallback title every route can override.
  */
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  metadataBase: METADATA_BASE,
   title: "Syed Asif",
 };
 

@@ -1,6 +1,18 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { FileX } from "lucide-react";
 import { Button, Container, EmptyState } from "@/components/ui";
+
+/**
+ * noindex, and disallowed in app/robots.ts too: this is a transient error
+ * state, not a page anyone should ever arrive at from a search result. It
+ * still gets a real title so a visitor who lands here from a stale
+ * bookmark sees something coherent in the tab.
+ */
+export const metadata: Metadata = {
+  title: "Resume unavailable",
+  robots: { index: false, follow: false },
+};
 
 /**
  * Where `app/resume/route.ts` redirects when there's no active resume to
@@ -25,6 +37,7 @@ export default function ResumeUnavailable() {
     <Container className="flex flex-col items-center py-(--space-section-y)">
       <EmptyState
         icon={FileX}
+        titleAs="h1"
         title="No resume available right now"
         description="There isn't an active resume to download at the moment. Check back soon, or get in touch directly."
       />

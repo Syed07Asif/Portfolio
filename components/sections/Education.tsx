@@ -10,8 +10,8 @@ export async function Education() {
   if (entries.length === 0) return null;
 
   return (
-    <Section id={SECTION_IDS.education}>
-      <SectionHeading eyebrow="Academic Background" heading="Education" />
+    <Section id={SECTION_IDS.education} labelledBy={`${SECTION_IDS.education}-heading`}>
+      <SectionHeading eyebrow="Academic Background" heading="Education" headingId={`${SECTION_IDS.education}-heading`} />
       <EducationContent entries={entries} />
     </Section>
   );

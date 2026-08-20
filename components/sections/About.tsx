@@ -36,8 +36,8 @@ export async function About() {
   if (!hasAnyContent) return null;
 
   return (
-    <Section id={SECTION_IDS.about}>
-      <SectionHeading eyebrow="About Me" heading="Background & focus" />
+    <Section id={SECTION_IDS.about} labelledBy={`${SECTION_IDS.about}-heading`}>
+      <SectionHeading eyebrow="About Me" heading="Background & focus" headingId={`${SECTION_IDS.about}-heading`} />
       <AboutContent
         name={profile?.full_name ?? DEFAULT_WORDMARK}
         avatarUrl={avatarUrl}

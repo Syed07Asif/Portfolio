@@ -8,3 +8,4 @@ export { getAchievements } from "./achievements";
 export { getContactLinks } from "./contactLinks";
 export { getActiveResume } from "./resumes";
 export { getSiteSettings } from "./siteSettings";
+export { getProjectSitemapEntries, getHomepageLastModified } from "./sitemap";

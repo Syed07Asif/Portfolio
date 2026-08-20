@@ -14,8 +14,8 @@ export async function Experience() {
   if (entries.length === 0) return null;
 
   return (
-    <Section id={SECTION_IDS.experience}>
-      <SectionHeading eyebrow="Where I've Worked" heading="Experience" />
+    <Section id={SECTION_IDS.experience} labelledBy={`${SECTION_IDS.experience}-heading`}>
+      <SectionHeading eyebrow="Where I've Worked" heading="Experience" headingId={`${SECTION_IDS.experience}-heading`} />
       <ExperienceContent entries={entries} />
     </Section>
   );

@@ -11,7 +11,10 @@ import { TypeScale } from "./_components/TypeScale";
 
 export const metadata: Metadata = {
   title: "Styleguide",
+  // Also disallowed in app/robots.ts. noindex and robots.txt do different
+  // jobs (one stops listing, the other stops fetching) — see that file.
   robots: { index: false, follow: false },
+  alternates: { canonical: "/styleguide" },
 };
 
 export default function StyleguidePage() {
@@ -23,7 +26,11 @@ export default function StyleguidePage() {
   }
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-16 px-6 py-16">
+    // Deliberately a div, not a <main>: app/(site)/layout.tsx already
+    // renders the page's single <main> landmark around this, and nesting a
+    // second one is invalid HTML (and gives assistive tech two "main"
+    // landmarks to choose between).
+    <div className="mx-auto flex max-w-5xl flex-col gap-16 px-6 py-16">
       <div className="flex flex-col gap-2">
         <p className="text-caption uppercase tracking-wider text-accent">Internal tool</p>
         <h1 className="text-display font-display font-extrabold text-foreground">Styleguide</h1>
@@ -76,6 +83,6 @@ export default function StyleguidePage() {
       >
         <PrimitivesShowcase />
       </StyleguideSection>
-    </main>
+    </div>
   );
 }

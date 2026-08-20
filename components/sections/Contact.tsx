@@ -16,10 +16,11 @@ export async function Contact() {
   if (contactLinks.length === 0 && !resume) return null;
 
   return (
-    <Section id={SECTION_IDS.contact}>
+    <Section id={SECTION_IDS.contact} labelledBy={`${SECTION_IDS.contact}-heading`}>
       <SectionHeading
         eyebrow="Get In Touch"
         heading="Let's Build Something"
+        headingId={`${SECTION_IDS.contact}-heading`}
         description="Have a project in mind, an opportunity to discuss, or just want to say hi? I'd love to hear from you."
       />
       <ContactContent contactLinks={contactLinks} hasResume={Boolean(resume)} />

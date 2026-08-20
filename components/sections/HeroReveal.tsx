@@ -15,6 +15,8 @@ export interface HeroRevealProps {
   availability?: string | null;
   /** Whether an active resume exists — the Download Resume CTA renders only when true, and always points at the stable RESUME_ROUTE, never a resume row's own file_url directly. */
   hasResume?: boolean;
+  /** DOM id for the page's h1, so Hero's own `<section>` can name itself via `aria-labelledby` — the h1 lives here, in the client child, but the landmark it names is the server parent's. */
+  headingId?: string;
 }
 
 /**
@@ -29,7 +31,15 @@ export interface HeroRevealProps {
  * + 0.08s stagger per item, ~0.04s initial delay — with at most 7 items
  * here that's under 0.8s end-to-end, comfortably inside the ~1.2s budget.
  */
-export function HeroReveal({ name, headline, tagline, shortBio, availability, hasResume }: HeroRevealProps) {
+export function HeroReveal({
+  name,
+  headline,
+  tagline,
+  shortBio,
+  availability,
+  hasResume,
+  headingId,
+}: HeroRevealProps) {
   return (
     <motion.div
       variants={staggerContainer}
@@ -45,6 +55,7 @@ export function HeroReveal({ name, headline, tagline, shortBio, availability, ha
       </motion.p>
 
       <motion.h1
+        id={headingId}
         variants={staggerItem}
         className="text-h1 font-display font-extrabold tracking-tight text-foreground sm:text-display"
       >
