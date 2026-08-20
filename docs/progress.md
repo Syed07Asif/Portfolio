@@ -64,8 +64,8 @@ content-management.md's "Phase 21 additions to shared infrastructure" and
 "Two real bugs, found live while building Phase 21" sections. Every table
 is back to exactly `supabase/seed.sql`'s content (verified row-for-row —
 one row each across all 15 tables, zero objects in every Storage bucket)
-after test-row cleanup. **Phases 20 and 21's work is uncommitted** as of
-this writing — see `git status` before assuming otherwise.
+after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
+`8b9d2f6` — see the "Latest commit" bullet below.
 
 - **Two new migrations were added in Phase 21** and have been applied
   locally via `npx supabase db reset`:
@@ -93,7 +93,15 @@ this writing — see `git status` before assuming otherwise.
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`. No new dependencies were needed for Phase 20.
-- **Latest commit:** `959e204` — "Phase 19: Profile, Skills, and
+- **Latest commit:** `8b9d2f6` — "Phases 20-21: Projects admin module and
+  the complete admin panel," pushed to `origin/develop` (74 files —
+  `git show 8b9d2f6 --stat` for the full list; the commit message carries
+  the full reasoning, including why both phases landed as *one* commit:
+  Phase 21 edited several Phase 20 files in place, so a "Phase 20 only"
+  commit would not have compiled — the same situation `56b789a` handled the
+  same way). This very edit (recording that hash here) is a small docs-only
+  follow-up on top of it, made after confirming the push succeeded.
+  Before that, `959e204` — "Phase 19: Profile, Skills, and
   Experience admin modules," pushed to `origin/develop` (37 files —
   `git show 959e204 --stat` for the full list; full reasoning in the
   commit message and this file's own Phase 19 log entry below). Before
