@@ -17,11 +17,17 @@ behind a specific phase if this summary isn't enough.
 
 ### Start-of-session checklist (verified working at the end of Phase 23)
 
+> **Resuming mid-build?** Phases 1–23 are complete and pushed. **Phase 24
+> (verify and harden) is the next phase and has not been started** — its
+> full brief, the environment assessment, and the measurement traps to
+> avoid are all recorded in this file's "Phase 24" entry below. Read that
+> before planning it; it will save re-deriving what was already worked out.
+
 Run these four commands first; each one's expected output is stated so a
 mismatch is obvious immediately rather than three steps later.
 
 ```bash
-git log --oneline -1        # expect: 88902c5, or one docs-only commit on top of it
+git log --oneline -1        # expect: the Phase 24 tooling commit (see "Latest commit")
 git status --short          # expect: empty — a clean tree
 docker ps --format '{{.Names}}' | grep supabase   # expect: 5 containers
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect: 000 (no server yet)
@@ -59,7 +65,9 @@ recreating that admin account afterward. This bit Phase 21.
 
 ## Where things stand
 
-**Phases 1–23 are done and verified. The admin panel is complete** — every
+**Phases 1–23 are done and verified, and all of it is pushed. Phase 24
+has not been started** — see its entry below for the brief and the
+groundwork. **The admin panel is complete** — every
 sidebar destination is now a real editor; no `ComingSoon` placeholder pages
 remain (`components/admin/ComingSoon.tsx` itself is now unused and could be
 deleted whenever someone is tidying). Phase 21's own log entry below has the
@@ -148,6 +156,11 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
 - **Branch:** `develop` (all phase work happens here; `main` is still just
   the Phase 1 scaffold — nothing has been merged up yet). Tracks
   `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
+- **Phase 24 tooling is installed but unused.** `lighthouse`, `axe-core`,
+  `vitest` and `@playwright/test` are in `devDependencies` (committed, so
+  the tree is clean and a fresh session doesn't have to re-install). No
+  Playwright browsers were downloaded and no test/config files exist yet —
+  nothing in `app/`, `components/` or `lib/` was touched by Phase 24.
 - **Server state at the end of Phase 23:** same as Phase 22 — a
   *production* server (`npm run build && npm run start`) is running on port
   3000, because the ISR/static-generation failure path in Phase 23 is only
@@ -2206,6 +2219,127 @@ exact.
 schema has been dropped, all test uploads were deleted through the Storage
 API (direct `DELETE` on `storage.objects` is blocked by a trigger), and all
 five Supabase containers plus the local admin account are healthy.
+
+### Phase 24 — Verify and harden: REQUESTED, ASSESSED, NOT STARTED
+
+**Status: no source files were changed.** The phase was requested, the
+environment was assessed, the tooling was installed, and then the session
+was stopped by the user before any implementation began. This entry exists
+so the next session can start from the assessment rather than redo it.
+
+**The brief, as given:**
+
+> GOAL: verify and harden. Report real numbers — do not say it "should be
+> fine".
+>
+> **Part A — Accessibility.** (1) Run axe or Lighthouse a11y on the
+> homepage, a project page and three admin pages; fix every violation;
+> report before/after scores. (2) Complete a keyboard-only pass over the
+> whole site — navbar, mobile menu, every section, project cards, the
+> lightbox, all admin forms and tables; everything reachable, operable, with
+> a visible focus indicator; no keyboard trap except the intentional ones in
+> modals. (3) Verify colour contrast for every text/background pairing
+> including text over the hero background effect and text on hover states;
+> WCAG AA (4.5:1 body, 3:1 large); report any pairing adjusted.
+> (4) Screen-reader semantics: landmarks, headings, labels tied to inputs,
+> errors announced via `aria-live`, accessible names on icon-only buttons,
+> no reliance on colour alone. (5) Confirm nothing is hover-only — every
+> hover-revealed action also available on focus and touch. (6) Re-test the
+> full `prefers-reduced-motion` path across every animated component.
+>
+> **Part B — Performance.** (7) Lighthouse on homepage, a media-heavy
+> project page and the admin dashboard, mobile *and* desktop profiles;
+> report LCP, CLS, INP, TBT and total bundle size before and after.
+> (8) Optimise: client → server components where interactivity isn't
+> needed; audit the JS bundle and remove/dynamically import anything heavy;
+> confirm modern image formats at correct sizes with proper `sizes`;
+> fonts subset and preloaded; no unnecessary third-party scripts.
+> (9) Profile the hero effect and scroll reveals — everything on
+> transform/opacity; report frame rate on a mid-range mobile profile with
+> CPU throttling. (10) Database: N+1 check, confirm indexes are used by real
+> query plans, confirm caching works (log cache hits).
+> Targets: homepage LCP < 2.5s mobile, CLS < 0.1, Lighthouse performance
+> 90+ desktop / 80+ mobile.
+>
+> **Part C — Testing.** (11) Set up a test runner; cover admin login,
+> project create/edit/delete, publish/unpublish, file upload, slug
+> uniqueness, resume upload + activation, the data layer returning only
+> published content, and Zod edge cases. (12) E2E for the two critical
+> journeys — recruiter (land → about → skills → projects → open project →
+> download resume → contact) and owner (log in → create project → upload
+> media → preview → publish → verify live). (13) Responsive verification at
+> 360, 390, 768, 1024, 1440, 1920 px for every page including admin, with
+> screenshots. (14) Cross-browser Chrome + Edge minimum, Safari if
+> available; note differences.
+>
+> Deliver a short written report of all measurements and everything changed.
+
+**Tooling already installed** (in `package.json`, committed — the only
+thing this phase actually changed): `lighthouse ^13.4.1`, `axe-core
+^4.13.0`, `vitest ^4.1.11`, `@playwright/test ^1.62.1`. No Playwright
+browser binaries were downloaded; Playwright can drive the *installed*
+Chrome and Edge via `channel: "chrome"` / `"msedge"`, which avoids a
+~300 MB download — worth doing deliberately rather than running
+`npx playwright install`.
+
+**Environment facts confirmed at assessment time**, so they don't need
+re-deriving:
+
+- `C:\Program Files\Google\Chrome\Application\chrome.exe` and
+  `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe` both
+  exist, so Lighthouse CLI and a real cross-browser pass are both
+  genuinely possible on this machine.
+- Node v24.19.0, npm 11.17.0.
+- A **production** server (`npm run build && npm run start`) was running on
+  port 3000, and all five Supabase containers were healthy. Lighthouse must
+  be run against a production build, never `next dev` — dev-mode numbers
+  are meaningless for the targets above.
+
+**Approach that had been worked out, and the traps it avoids** (every one
+of these is a lesson already paid for elsewhere in this file):
+
+- **Admin pages can't be Lighthouse'd anonymously.** Two options: pass the
+  Supabase auth cookies to the CLI via `--extra-headers`, or run axe-core
+  by injection inside the already-authenticated Browser pane. The second is
+  more reliable; the first needs the cookies to be non-httpOnly, which was
+  not verified.
+- **axe-core by injection is the honest way to get real violation counts**
+  — read the installed `axe.min.js` off disk and evaluate it in the page via
+  `javascript_tool`, then run `axe.run()`. That works for authenticated
+  admin pages too.
+- **Contrast can be computed rather than eyeballed** — walk the DOM,
+  read computed `color`/`background-color`, compute the WCAG ratio. That
+  produces the "report any pairing you had to adjust" table with real
+  numbers, including hover states (force them by adding the hover class or
+  reading the CSS rule).
+- **LCP is not measurable from the Browser pane unless the user has the
+  pane actually displayed** — `document.visibilityState` is `"hidden"`
+  otherwise and the Paint Timing API never fires at all (Phase 8's lesson,
+  still true). Lighthouse CLI drives its own Chrome and does not have this
+  problem, which is the other reason to prefer it for Part B.
+- **INP is a field metric.** Lighthouse lab runs do not produce it; TBT is
+  the lab proxy. Report TBT and say so plainly rather than inventing an INP
+  number.
+- **CPU-throttled frame rate (item 9)** needs Chrome DevTools Protocol
+  throttling, which the Browser pane does not expose. Lighthouse's mobile
+  profile *does* apply 4× CPU throttling, so its TBT is a real throttled
+  number; a raw `requestAnimationFrame` FPS sample taken on this machine is
+  not a mid-range mobile figure and must not be presented as one.
+- **`NEXT_PUBLIC_*` is inlined at build time** (Phase 23) — relevant if any
+  measurement run needs a different Supabase URL.
+- **A stale `unstable_cache` entry survives deleting `.next/cache`**
+  (Phases 7 and 23) — relevant to item 10's "log cache hits", where the
+  cache's behaviour is the thing under test.
+
+**Two open scoping questions for the next session:**
+
+1. Item 12's owner journey ends in "publish → verify it is live", which
+   means an E2E test that mutates real content. It needs either a
+   dedicated test row cleaned up afterwards (the pattern every prior phase
+   used) or a separate test database.
+2. Item 13 is 6 widths × ~10 routes ≈ 60 screenshots. Worth agreeing what
+   "every page" means before spending the time — the admin panel alone is
+   a dozen routes.
 
 ## Recurring lessons worth not re-learning
 
