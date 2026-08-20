@@ -11,13 +11,51 @@ for the actual reference material, this one for history and continuity.
 skim `git log --oneline` and `git status` to confirm nothing has changed
 since the "Where things stand" section below was last updated — see that
 section's own "Latest commit" bullet for the exact hash this was written
-against. Check `docker ps` for the local Supabase containers (they run
-independently of any chat session and are very likely still up — see
-below) and start the dev server (`preview_start` with `{"name":
-"portfolio-dev"}`, or `npm run dev`) since it does **not** persist between
-sessions and needs restarting every time. Each phase's commit message
+against. Each phase's commit message
 also has a detailed writeup — `git show <hash>` for the full reasoning
 behind a specific phase if this summary isn't enough.
+
+### Start-of-session checklist (verified working at the end of Phase 21)
+
+Run these four commands first; each one's expected output is stated so a
+mismatch is obvious immediately rather than three steps later.
+
+```bash
+git log --oneline -1        # expect: dc3479a (see "Latest commit" below)
+git status --short          # expect: empty — a clean tree
+docker ps --format '{{.Names}}' | grep supabase   # expect: 5 containers
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/   # expect: 000 (no server yet)
+```
+
+Then, in order:
+
+1. **Docker Desktop must actually be running** — `docker info` first. If
+   the five `supabase_*_syed-asif-portfolio` containers aren't listed, see
+   "To stand up the local stack" below (and note the `--exclude` flag set
+   there now keeps **both** `gotrue` and `storage-api`).
+2. **Start the dev server**: `preview_start` with `{"name":
+   "portfolio-dev"}`, or `npm run dev`. Port 3000 was free at the end of
+   Phase 21. If it *isn't*, read the "Dev server" bullet below before
+   trying to fix it — the obvious fix (`autoPort`) does not work, for a
+   non-obvious reason.
+3. **Confirm the stack is actually reachable**, not merely running — a
+   container being "up" doesn't prove `.env.local`'s keys still match it
+   (a `stop`/`start` cycle can regenerate the JWT signing material; a `db
+   reset` does not). One request settles it:
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' \
+     "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/projects?select=slug&limit=1" \
+     -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY"
+   ```
+   `200` means good; `401`/`PGRST301` means re-derive both keys from `npx
+   supabase status -o env` and update `.env.local`.
+4. **To log into `/admin`**, use `test-admin@example.com` /
+   `Test-Admin-Pass-123!`. If it fails, the account was wiped by a `db
+   reset` — recreating it is two commands, in the Supabase bullet below.
+
+**Before running `npx supabase db reset`** (needed whenever a new migration
+is added): it wipes `auth.users` and `private.admins` too, so budget for
+recreating that admin account afterward. This bit Phase 21.
 
 ## Where things stand
 
@@ -82,12 +120,28 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
 - **Branch:** `develop` (all phase work happens here; `main` is still just
   the Phase 1 scaffold — nothing has been merged up yet). Tracks
   `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
-- **Dev server:** running as of the end of the session that wrote this
-  (`portfolio-dev` launch config, port 3000) — it does not persist between
-  sessions/restarts regardless, so a new session still needs to start it:
-  `preview_start`/`{"name": "portfolio-dev"}` (or `npm run dev`); if
-  anything looks stale afterward, `rm -rf .next` first (see the Turbopack
-  cache notes below).
+- **Dev server: NOT running** as of the end of the Phase 21 session
+  (verified — `curl http://localhost:3000/` got no response). For most of
+  that session a *different* chat session's server held port 3000; it has
+  since stopped, so **port 3000 is free and a new session can just start
+  its own normally**: `preview_start`/`{"name": "portfolio-dev"}` (or `npm
+  run dev`). Two things worth knowing before fighting a port conflict if
+  one does reappear: (1) **Next 16's dev-server lock is keyed to the
+  project directory, not the port** — setting `"autoPort": true` in
+  `.claude/launch.json` does *not* help; the second instance binds its
+  assigned port, logs "Another `next dev` server is already running", and
+  **exits 1**, so the failure looks like a successful start followed by an
+  immediate exit rather than a bind error. The documented fix (Phases
+  14/15/21) is to point the Browser pane at the already-running origin,
+  which picks up saved edits via normal HMR. (2) **Don't `rm -rf .next`
+  while another session's server is running against this directory** — it
+  owns that folder; Phase 21 did it anyway (to clear a stale type cache)
+  and forced that server into a cold recompile. It recovered, but `npx next
+  typegen` or a full `next build` regenerates the route types without
+  deleting anything. Note a bare `npx tsc --noEmit` with no `.next`
+  present fails with two spurious `Cannot find name 'LayoutProps'` errors,
+  since that global is generated into `.next/types` — run `next build`
+  first before trusting a standalone `tsc`.
 - **New dependencies added in Phase 18** (already `npm install`ed, in
   `package.json`): `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
@@ -99,8 +153,12 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   the full reasoning, including why both phases landed as *one* commit:
   Phase 21 edited several Phase 20 files in place, so a "Phase 20 only"
   commit would not have compiled — the same situation `56b789a` handled the
-  same way). This very edit (recording that hash here) is a small docs-only
-  follow-up on top of it, made after confirming the push succeeded.
+  same way). **The actual tip of `origin/develop` is `dc3479a`**, a
+  docs-only follow-up recording that hash here (plus a second docs-only
+  commit updating this section's environment state at the very end of the
+  Phase 21 session — if `git log` shows one more commit than expected on
+  top of `dc3479a`, that's it, and `git show` will confirm it touched
+  nothing but `docs/progress.md`).
   Before that, `959e204` — "Phase 19: Profile, Skills, and
   Experience admin modules," pushed to `origin/develop` (37 files —
   `git show 959e204 --stat` for the full list; full reasoning in the
@@ -143,17 +201,30 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   Once it's up, the containers are `supabase_db_syed-asif-portfolio`,
   `supabase_rest_syed-asif-portfolio`, `supabase_auth_syed-asif-portfolio`,
   `supabase_kong_syed-asif-portfolio`, and (as of Phase 20)
-  `supabase_storage_syed-asif-portfolio`. The database holds exactly
-  `supabase/seed.sql`'s content (verified row-for-row at the end of the
-  Phase 20 session — one row each in `profile`, `skill_categories`,
-  `skills`, `experience`, `education`, `projects` — plus one row each in
-  `project_technologies`/`project_features`/`project_media`, matching the
-  seed — and zero objects in every Storage bucket except whatever the seed
-  itself references) plus one Phase-17-created **local test admin
+  `supabase_storage_syed-asif-portfolio`. **All five were verified up and
+  healthy at the end of the Phase 21 session**, along with three other
+  things a new session would otherwise have to re-derive: the database
+  holds exactly `supabase/seed.sql`'s content (**re-verified row-for-row at
+  the end of Phase 21** — one row in each of all 15 tables, and **zero rows
+  in `storage.objects`**), `.env.local`'s anon key still authenticates
+  against the running stack (confirmed with a real PostgREST request →
+  HTTP 200, so the JWT signing material was *not* regenerated by Phase 21's
+  `db reset`), and `public.set_active_resume` exists in `pg_proc` (i.e.
+  Phase 21's migrations really are applied, not just present on disk).
+  There is also one **local test admin
   account** (`test-admin@example.com`
   / `Test-Admin-Pass-123!` — a real Supabase Auth user with a row in
   `private.admins`, local-only, not a secret worth protecting since it's a
-  throwaway Docker Postgres instance; kept, not cleaned up, since a future
+  throwaway Docker Postgres instance). **It was destroyed and recreated
+  during Phase 21**: `npx supabase db reset` (needed to apply the two new
+  migrations) wipes `auth.users` and `private.admins` along with the
+  content tables. Recreating it is two steps, both fast — `POST
+  {SUPABASE_URL}/auth/v1/admin/users` with the service-role key as *both*
+  `apikey` and `Authorization: Bearer` (body `{"email":...,"password":...,
+  "email_confirm":true}`), then a `docker exec ... psql` insert into
+  `private.admins` selecting that user's id. Verified present again at the
+  end of Phase 21 (1 row in `auth.users`, 1 in `private.admins`). Kept, not
+  cleaned up, since a future
   session building the actual content editors will want a working admin
   login to test against without re-deriving this) — assuming Docker's
   volumes survived whatever stopped the engine; if `docker ps -a` shows no
