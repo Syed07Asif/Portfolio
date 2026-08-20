@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import type { Database } from "@/types/database";
+import { isConnectivityError } from "@/lib/data/shared";
 
 const LOGIN_PATH = "/admin/login";
 
@@ -49,7 +50,28 @@ export async function updateSession(request: NextRequest) {
 
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
+
+  // "Couldn't reach the Auth server" is not "not signed in". Treating them
+  // the same was a real bug, found in Phase 23 by stopping the Postgres
+  // container and clicking a publish toggle: this redirected the Server
+  // Action's own POST to /admin/login, React couldn't interpret an HTML
+  // redirect as an action result, and the page threw "An unexpected
+  // response was received from the server" — an unhandled rejection, with
+  // the optimistic row left flipped and no error toast, ever.
+  //
+  // Letting the request through during an outage costs nothing in security:
+  // this is layer 1 of three. The protected layout still re-checks (and now
+  // renders the admin error boundary rather than redirecting — see
+  // lib/auth.ts's resolveAdminAuth), every Server Action re-checks through
+  // createAdminAction, and RLS is the real boundary regardless. What it
+  // buys is that a mutation fails as a *failure*, with a message and a
+  // rollback, instead of as a redirect the client can't parse.
+  if (userError && isConnectivityError(userError)) {
+    console.error("[proxy] auth unreachable, passing through to layer 2:", userError.message);
+    return supabaseResponse;
+  }
 
   const { pathname, search } = request.nextUrl;
   const isLoginRoute = pathname === LOGIN_PATH;

@@ -12,11 +12,13 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVerticalIcon, Loader2Icon, PlusIcon, XIcon } from "lucide-react";
+import { GripVerticalIcon, PlusIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STORAGE_BUCKETS } from "@/lib/constants";
 import { fileSchema } from "@/lib/validation";
 import { buildStoragePath, extractStoragePath, removeFiles, uploadFile } from "@/lib/storage/upload";
+import { describeUploadError } from "@/lib/storage/errors";
+import { UploadProgress } from "./UploadProgress";
 import { Button } from "@/components/admin/ui/button";
 
 export interface MultiImageUploaderProps {
@@ -86,6 +88,10 @@ function SortableThumbnail({
  */
 export function MultiImageUploader({ value, onChange, bucket, recordId, label = "Gallery", disabled }: MultiImageUploaderProps) {
   const [uploadingCount, setUploadingCount] = useState(0);
+  // Files upload one at a time (the loop below awaits each), so a single
+  // name + percentage describes exactly what's happening — no need to track
+  // a map of concurrent uploads.
+  const [current, setCurrent] = useState<{ name: string; percent: number } | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const bucketConfig = STORAGE_BUCKETS[bucket];
@@ -100,14 +106,20 @@ export function MultiImageUploader({ value, onChange, bucket, recordId, label = 
       }
 
       setUploadingCount((count) => count + 1);
+      setCurrent({ name: file.name, percent: 0 });
       try {
         const path = buildStoragePath(recordId, file);
-        const result = await uploadFile(bucketConfig.id, path, file);
+        const result = await uploadFile(bucketConfig.id, path, file, {
+          onProgress: (percent) => setCurrent({ name: file.name, percent }),
+        });
         onChange([...value, result.url]);
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : `${file.name}: upload failed.`);
+        // Named per file: in a multi-file drop, "the upload didn't
+        // complete" is useless without knowing which one.
+        toast.error(`${file.name}: ${describeUploadError(error, bucketConfig)}`);
       } finally {
         setUploadingCount((count) => count - 1);
+        setCurrent(null);
       }
     }
   }
@@ -168,7 +180,9 @@ export function MultiImageUploader({ value, onChange, bucket, recordId, label = 
               )}
             >
               {uploadingCount > 0 ? (
-                <Loader2Icon className="size-5 animate-spin text-foreground-muted" aria-hidden="true" />
+                <div className="relative flex size-full items-center justify-center">
+                  <UploadProgress percent={current?.percent ?? 0} label={current?.name ?? "image"} />
+                </div>
               ) : (
                 <>
                   <PlusIcon className="size-5 text-foreground-muted" aria-hidden="true" />

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { PageTransition } from "@/components/layout/PageTransition";
-import { getActiveResume, getContactLinks, getProfile, getSiteSettings } from "@/lib/data";
+import { getActiveResume, getContactLinks, getProfile, getSiteSettings, tolerateUnavailable } from "@/lib/data";
 import { DEFAULT_NAV_ITEMS, DEFAULT_WORDMARK } from "@/lib/constants";
 import { OG_IMAGE_SIZE, absoluteUrl, truncateForMeta } from "@/lib/seo";
 
@@ -26,7 +26,13 @@ const FALLBACK_DESCRIPTION = "Portfolio of Syed Asif, Analytics & ML Engineer.";
  * instead of setting one or two OG fields and hoping the rest is inherited.
  */
 export async function generateMetadata(): Promise<Metadata> {
-  const [siteSettings, profile] = await Promise.all([getSiteSettings(), getProfile()]);
+  // Tolerated, not propagated: metadata generation failing would take down
+  // a page that could otherwise still render its degraded state with
+  // perfectly good fallback copy.
+  const [siteSettings, profile] = await Promise.all([
+    tolerateUnavailable(getSiteSettings(), null),
+    tolerateUnavailable(getProfile(), null),
+  ]);
 
   const brand = profile?.full_name ?? DEFAULT_WORDMARK;
   const title = siteSettings?.site_title ?? FALLBACK_TITLE;
@@ -74,11 +80,17 @@ export async function generateMetadata(): Promise<Metadata> {
  * wrapping `/admin` for a snappier, less decorative admin panel.
  */
 export default async function SiteLayout({ children }: LayoutProps<"/">) {
+  // Every value below already has a hard-coded fallback (DEFAULT_NAV_ITEMS,
+  // DEFAULT_WORDMARK, an empty contact list, no resume), which is exactly
+  // the case `tolerateUnavailable` is for: when the database is unreachable
+  // the chrome still renders, so the visitor gets a real header and footer
+  // around the degraded state rather than an unstyled full-page error. The
+  // *content* deliberately does not tolerate — see app/(site)/error.tsx.
   const [siteSettings, profile, contactLinks, resume] = await Promise.all([
-    getSiteSettings(),
-    getProfile(),
-    getContactLinks(),
-    getActiveResume(),
+    tolerateUnavailable(getSiteSettings(), null),
+    tolerateUnavailable(getProfile(), null),
+    tolerateUnavailable(getContactLinks(), []),
+    tolerateUnavailable(getActiveResume(), null),
   ]);
 
   const navItems = siteSettings?.primary_nav?.length ? siteSettings.primary_nav : DEFAULT_NAV_ITEMS;

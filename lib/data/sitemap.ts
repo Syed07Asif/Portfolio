@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 /**
  * Reads that exist purely to give `app/sitemap.ts` real `lastModified`
@@ -25,7 +25,7 @@ export async function fetchProjectSitemapEntries(): Promise<ProjectSitemapEntry[
     .order("updated_at", { ascending: false });
 
   if (error) {
-    logDataError("getProjectSitemapEntries", error);
+    handleDataError("getProjectSitemapEntries", error);
     return [];
   }
   return data ?? [];
@@ -67,7 +67,7 @@ export async function fetchHomepageLastModified(): Promise<string | null> {
   for (const { data, error } of results) {
     if (error) {
       // One unreadable table shouldn't cost the sitemap its other dates.
-      logDataError("getHomepageLastModified", error);
+      handleDataError("getHomepageLastModified", error);
       continue;
     }
     const candidate = data?.[0]?.updated_at ?? null;

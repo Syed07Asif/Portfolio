@@ -70,3 +70,13 @@ Each of these folders has its own README with more detail — read it before add
 3. **All schema changes go through a migration file** in `supabase/migrations`. No hand-editing the schema in the Supabase dashboard and leaving it undocumented — the migration files are the source of truth for the database shape.
 4. **No arbitrary values in components.** Colors, spacing, radii, shadows, durations, and easings are all design tokens defined in `styles/tokens.css` and exposed as Tailwind utilities (`bg-surface`, `text-h2`, `rounded-lg`, `shadow-glow-accent-md`, `ease-out-expo`, ...) — see [docs/architecture.md](../docs/architecture.md)'s Design System section for the full list. Don't write `bg-[#1a1f38]`, `p-[18px]`, `rounded-[14px]`, or similar hardcoded/arbitrary Tailwind values in a component; if a token doesn't exist for what's needed, add it to `styles/tokens.css` rather than reaching for a one-off literal. The only exception is `[value:var(--token-name)]` arbitrary-property syntax when referencing an existing token has no matching utility class — that's still 100% token-driven, just spelled differently.
 5. **Don't scaffold ahead of the current phase.** This is a multi-phase build — implement what's asked for in the current phase, not speculative future features.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

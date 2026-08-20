@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isConnectivityError } from "@/lib/data";
 
 export interface AuthenticatedAdmin {
   id: string;
@@ -21,6 +22,34 @@ export interface AuthenticatedAdmin {
  * "does a non-admin account exist" from the outside.
  */
 export async function getAuthenticatedAdmin(): Promise<AuthenticatedAdmin | null> {
+  const result = await resolveAdminAuth();
+  return result.status === "authenticated" ? result.admin : null;
+}
+
+/**
+ * Three-way result, added in Phase 23. `getAuthenticatedAdmin` above
+ * collapses it back to "admin or not" for the callers that only care about
+ * that, but two callers genuinely need the third case:
+ *
+ * - `createAdminAction` used to answer *every* failure with "You must be
+ *   signed in as an admin to do that." When the real cause was an
+ *   unreachable database, that message sent the admin off re-authenticating
+ *   a session that was never the problem.
+ * - The protected layout used to redirect to `/admin/login` on the same
+ *   signal, which during an outage is a loop: the login page can't sign
+ *   anyone in either, because Auth is backed by the same Postgres.
+ *
+ * The security property is unchanged: `unauthenticated` still merges "no
+ * session" and "signed in but not the admin" into one indistinguishable
+ * outcome. `unavailable` says nothing about whether any account exists —
+ * only that the check itself couldn't run.
+ */
+export type AdminAuthResult =
+  | { status: "authenticated"; admin: AuthenticatedAdmin }
+  | { status: "unauthenticated" }
+  | { status: "unavailable"; cause: unknown };
+
+export async function resolveAdminAuth(): Promise<AdminAuthResult> {
   const supabase = await createClient();
 
   const {
@@ -28,13 +57,27 @@ export async function getAuthenticatedAdmin(): Promise<AuthenticatedAdmin | null
     error: userError,
   } = await supabase.auth.getUser();
 
-  if (userError || !user) return null;
+  if (userError) {
+    if (isConnectivityError(userError)) {
+      console.error("[lib/auth] auth service unreachable:", userError.message);
+      return { status: "unavailable", cause: userError };
+    }
+    return { status: "unauthenticated" };
+  }
+  if (!user) return { status: "unauthenticated" };
 
   const { data: isAdmin, error: adminError } = await supabase.rpc("is_admin");
 
-  if (adminError || !isAdmin) return null;
+  if (adminError) {
+    if (isConnectivityError(adminError)) {
+      console.error("[lib/auth] is_admin() unreachable:", adminError.message);
+      return { status: "unavailable", cause: adminError };
+    }
+    return { status: "unauthenticated" };
+  }
+  if (!isAdmin) return { status: "unauthenticated" };
 
-  return { id: user.id, email: user.email ?? null };
+  return { status: "authenticated", admin: { id: user.id, email: user.email ?? null } };
 }
 
 /**

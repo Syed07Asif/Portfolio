@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { UploadError } from "./errors";
 
 /**
  * Client-safe upload helpers — called directly from ImageUploader/
@@ -30,16 +31,91 @@ export function buildStoragePath(recordId: string, file: File): string {
   return `${recordId}/${crypto.randomUUID()}.${ext}`;
 }
 
-export async function uploadFile(bucket: string, path: string, file: File): Promise<UploadResult> {
-  const supabase = createClient();
-  const { error } = await supabase.storage.from(bucket).upload(path, file, {
-    cacheControl: "3600",
-    upsert: true,
-  });
+export interface UploadOptions {
+  /** Called with 0-100 as the bytes go out. Fires at least once with 100 before the promise resolves. */
+  onProgress?: (percent: number) => void;
+}
 
-  if (error) {
-    throw new Error(error.message || "Upload failed.");
+/**
+ * Uploads straight to Storage's REST endpoint over `XMLHttpRequest` rather
+ * than through `supabase.storage.from().upload()`.
+ *
+ * The reason is `xhr.upload.onprogress`, which is the only way to get real
+ * byte-level progress in a browser: the installed `@supabase/storage-js`
+ * uses `fetch`, which exposes no upload-progress event at all, and that
+ * limitation is why the uploaders previously showed an indeterminate
+ * spinner. Everything else about the request is what the client library
+ * itself sends — same `POST /storage/v1/object/{bucket}/{path}`, same
+ * `x-upsert`, same bearer token — so RLS applies identically; this is a
+ * different transport for the same call, not a different privilege path.
+ *
+ * Failures come back as `UploadError` carrying the HTTP status, which
+ * `describeUploadError` needs to say something specific and actionable.
+ */
+export async function uploadFile(
+  bucket: string,
+  path: string,
+  file: File,
+  options: UploadOptions = {},
+): Promise<UploadResult> {
+  const supabase = createClient();
+
+  // The admin's own session token — the same credential the client library
+  // would attach. Without it the request would be anonymous and RLS would
+  // reject it, so this is worth failing early and clearly on.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) {
+    throw new UploadError("Your session has ended. Sign in again to upload files.", 401);
   }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const endpoint = `${supabaseUrl}/storage/v1/object/${bucket}/${path
+    .split("/")
+    .map(encodeURIComponent)
+    .join("/")}`;
+
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", endpoint, true);
+    xhr.setRequestHeader("authorization", `Bearer ${accessToken}`);
+    xhr.setRequestHeader("apikey", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+    xhr.setRequestHeader("x-upsert", "true");
+    xhr.setRequestHeader("cache-control", "3600");
+    if (file.type) xhr.setRequestHeader("content-type", file.type);
+
+    xhr.upload.onprogress = (event) => {
+      if (!options.onProgress || !event.lengthComputable) return;
+      options.onProgress(Math.round((event.loaded / event.total) * 100));
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        options.onProgress?.(100);
+        resolve();
+        return;
+      }
+      // Storage errors come back as {statusCode, error, message}; fall back
+      // to the raw body when it isn't JSON (a proxy/gateway error page).
+      let message = xhr.responseText || `Upload failed with status ${xhr.status}.`;
+      try {
+        const parsed = JSON.parse(xhr.responseText) as { message?: string; error?: string };
+        message = parsed.message || parsed.error || message;
+      } catch {
+        // Not JSON — keep the raw text.
+      }
+      reject(new UploadError(message, xhr.status));
+    };
+
+    // Network-level failure: no response ever arrived, so there is no
+    // status to report. `describeUploadError` keys "couldn't reach storage"
+    // off exactly this shape (status 0 + a network message).
+    xhr.onerror = () => reject(new UploadError("Network error during upload.", 0));
+    xhr.ontimeout = () => reject(new UploadError("The upload timed out.", 0));
+    xhr.onabort = () => reject(new UploadError("The upload was cancelled.", 0));
+
+    xhr.send(file);
+  });
 
   const { data } = supabase.storage.from(bucket).getPublicUrl(path);
   return { url: data.publicUrl, path };

@@ -15,7 +15,7 @@ against. Each phase's commit message
 also has a detailed writeup — `git show <hash>` for the full reasoning
 behind a specific phase if this summary isn't enough.
 
-### Start-of-session checklist (verified working at the end of Phase 22)
+### Start-of-session checklist (verified working at the end of Phase 23)
 
 Run these four commands first; each one's expected output is stated so a
 mismatch is obvious immediately rather than three steps later.
@@ -59,7 +59,7 @@ recreating that admin account afterward. This bit Phase 21.
 
 ## Where things stand
 
-**Phases 1–22 are done and verified. The admin panel is complete** — every
+**Phases 1–23 are done and verified. The admin panel is complete** — every
 sidebar destination is now a real editor; no `ComingSoon` placeholder pages
 remain (`components/admin/ComingSoon.tsx` itself is now unused and could be
 deleted whenever someone is tidying). Phase 21's own log entry below has the
@@ -76,6 +76,22 @@ running them, is in this file's Phase 22 log entry below. **Two things it
 could not verify are recorded there honestly**: Google's Rich Results Test
 is behind a reCAPTCHA, and every external social-card validator needs a
 public URL the undeployed site doesn't have yet.
+
+**Phase 23 (resilience) is done and verified** — error/not-found/loading
+routes across the public site and admin, per-section Suspense streaming,
+real upload progress, actionable upload/auth failure messages, and a
+field-by-field empty-state audit run against the real database
+([docs/empty-states.md](./empty-states.md)). **Five real defects were found
+by deliberately breaking things**, none of them visible in the source: a
+database outage was indistinguishable from empty content (and got cached
+for an hour); `error.tsx` turned out not to cover statically generated
+pages, so an outage on an ISR route returned raw "Internal Server Error"
+text in production; `connection()` reproduced that same 500 rather than
+fixing it; the middleware turned an outage into an unparseable Server
+Action response with a permanently stuck optimistic UI; and admin auth
+answered every failure with "you must be signed in." Full narrative in this
+file's Phase 23 entry below; reference material in
+[docs/architecture.md](./architecture.md)'s "Resilience" section.
 
 Phase 18 ("shared admin
 infrastructure") had one earlier, failed attempt — removed entirely and
@@ -132,6 +148,16 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
 - **Branch:** `develop` (all phase work happens here; `main` is still just
   the Phase 1 scaffold — nothing has been merged up yet). Tracks
   `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
+- **Server state at the end of Phase 23:** same as Phase 22 — a
+  *production* server (`npm run build && npm run start`) is running on port
+  3000, because the ISR/static-generation failure path in Phase 23 is only
+  reproducible in a real build. **All five Supabase containers were stopped
+  and restarted individually during this phase** (`supabase_db_*`,
+  `supabase_rest_*`, `supabase_kong_*`, `supabase_storage_*`) to force real
+  outages; all are up and healthy again, the database matches
+  `supabase/seed.sql` exactly (verified with `EXCEPT`), Storage holds zero
+  objects, and the local admin account still works. The Phase 22 note below
+  still describes the port-3000 situation accurately.
 - **Server state at the end of Phase 22:** a *production* server (`npm run
   build && npm run start`, not `next dev`) was left running on port 3000 —
   that's what the metadata/sitemap/OG-card verification was done against,
@@ -2034,8 +2060,179 @@ over):
   site is deployed with a real origin; until then the tags were verified by
   reading the served markup directly.
 
+### Phase 23 — Resilience: error pages, loading states, empty states, and failure handling
+
+The instruction that shaped this phase was "test the failure cases
+deliberately — do not just read the code and assume." Doing that is what
+turned it from a page-writing exercise into a bug hunt: **five real
+defects, none of which were visible in the source.**
+
+Reference material is in [docs/architecture.md](./architecture.md)'s new
+"Resilience" section and the whole of
+[docs/empty-states.md](./empty-states.md). This entry is what was learned.
+
+**The five defects, all found by breaking something on purpose:**
+
+1. **An unreachable database was indistinguishable from empty content.**
+   Every `lib/data` read swallowed its error and returned `null`/`[]`. With
+   `NEXT_PUBLIC_SUPABASE_URL` pointed at a dead port the homepage rendered a
+   hollow shell, `/projects` claimed "No projects yet. Published projects
+   will show up here once they're added," and `/projects/[slug]` returned a
+   blank 404 for a real project. Worse, those empty values were returned
+   from inside `unstable_cache` and so were **cached for an hour**. Fixed by
+   classifying connectivity-class errors in `lib/data/shared.ts` and
+   throwing `DataUnavailableError`, with `tolerateUnavailable` opting out
+   the few callers that must not fail (chrome, metadata, sitemap, OG image,
+   `generateStaticParams`).
+
+2. **`error.tsx` does not cover statically generated pages.** The big one.
+   `app/(site)/error.tsx` handled the outage perfectly in dev and on every
+   dynamic route — `/admin` rendered its boundary cleanly with PostgREST
+   stopped. But an unbuilt slug on an ISR route is generated at request
+   time as *cacheable static output*, and a throw there never reaches a
+   React error boundary: production returned bare "Internal Server Error"
+   text, the exact thing this phase existed to eliminate. **This was only
+   visible in a production build** — dev never showed it. Fixed by having
+   the three statically generated pages catch `DataUnavailableError`
+   themselves and return `<ContentUnavailable />`, a Server Component.
+
+3. **`connection()` cannot rescue an in-flight static render.** The obvious
+   way to keep an outage response out of the route cache. It throws
+   `DYNAMIC_SERVER_USAGE` instead, which Next converts straight back into
+   the bare 500 — so the "fix" reproduced the bug it was meant to solve.
+   Removed. The accepted trade (a degraded page may be cached for up to
+   `revalidate`) was then **verified rather than assumed**: requesting the
+   same slug after recovery still served the degraded page, while a fresh
+   slug behaved normally.
+
+4. **The middleware turned a database outage into an unparseable Server
+   Action response.** `updateSession` discarded the error from
+   `getUser()` and treated any failure as "signed out", so during an outage
+   it redirected the *Server Action's own POST* to `/admin/login`. React
+   can't interpret an HTML redirect as an action result: the page threw "An
+   unexpected response was received from the server" as an unhandled
+   rejection, and the optimistic row sat flipped with no toast, forever.
+   Found by stopping the Postgres container and clicking a publish toggle.
+   Fixed by passing connectivity failures through to layer 2 — which costs
+   nothing, since the protected layout and every Server Action re-check, and
+   RLS is the real boundary.
+
+5. **Admin auth answered every failure with "you must be signed in."**
+   Including "the database is unreachable", which sends an admin off
+   re-authenticating a session that was never the problem — to a login page
+   backed by the same Postgres. `resolveAdminAuth` now returns a three-way
+   result (`authenticated` / `unauthenticated` / `unavailable`) while still
+   merging "no session" and "not the admin" into one indistinguishable
+   outcome, so nothing leaks about which accounts exist.
+
+**A false finding I caught before reporting it**, worth recording because
+the failure mode is subtle: after a successful upload the image preview
+appeared broken (`complete: true, naturalWidth: 0`), which looked like a
+real bug — the preview keeps a blob URL that `finally` has already revoked.
+It wasn't. The test file was 8 MB of near-zero bytes with a PNG magic
+header, which no decoder can render *regardless* of blob revocation.
+Re-tested with a genuine `canvas.toBlob()` PNG: `naturalWidth: 400`, fine.
+**When testing image behaviour, generate a real decodable image** — a
+plausible-looking fake byte array produces a broken image for reasons that
+have nothing to do with the code under test.
+
+**Upload progress is real now.** `@supabase/storage-js` uploads via
+`fetch`, which has no upload-progress event — that's why the uploaders had
+an indeterminate spinner. `uploadFile` moved to `XMLHttpRequest` against
+the same `POST /storage/v1/object/{bucket}/{path}` endpoint with the same
+bearer token, so RLS applies identically; it's a different transport for
+the same call, not a different privilege path. Verified with an 8 MB
+upload: progress sampled at 0 → 16 → 22 → 61 → 100, and the object landed
+in Storage at the right size.
+
+**The empty-state audit was run against the real database, not read out of
+the components.** Three batches, each restarting the dev server with a cold
+`.next` (a stale `unstable_cache` entry survives deleting `.next/cache` —
+re-confirmed, matching Phase 7): a bare-minimum project, every optional
+field null with rows still published, and nothing published anywhere. The
+middle batch is the one that proves "no stray punctuation, bullets or
+gaps": scanning for empty `<li>`/`<p>`/`<h*>`, doubled or dangling `·`
+separators, and literal `null`/`undefined` strings returned **zero hits**.
+Every table was backed up to an `audit_backup` schema first and restored
+after, with a row-by-row `EXCEPT` comparison confirming the restore was
+exact.
+
+**Two testing gotchas that cost real time:**
+
+- **`NEXT_PUBLIC_*` variables are inlined at build time.** The brief's
+  suggested test — point the env var at an invalid URL — works in `next
+  dev` (which reads `process.env` live) but has **no effect on a production
+  server**, which keeps the value baked in at build. A prod outage test has
+  to stop the actual containers (`docker stop supabase_rest_… supabase_kong_…`)
+  or rebuild with the bad value. Half an hour went into a "passing" prod
+  test that was quietly still talking to a healthy database.
+- **Regex-scanning HTML for `<button ... disabled` matches Tailwind's
+  `disabled:` variant classes.** It reported disabled buttons on a page
+  that had none. Assert on the rendered control, not on a substring of the
+  class attribute.
+
+**What was verified, and how:**
+
+- Every error page rendered live: root 404, project 404, the site degraded
+  state, the admin boundary. All carry an h1 and at least two routes back.
+- **No leakage in production**: with the stack down, the degraded page
+  showed no `<pre>`, no message, no Supabase/Postgres string — only a
+  reference code — while the full error, stack and cause were in the
+  server log.
+- Loading states observed on real navigations: `Loading project` for the
+  detail route, and five distinct section skeletons streaming
+  independently on the homepage.
+- Optimistic rollback verified by stopping Postgres with the admin list
+  open: toggle flipped, action failed, toggle reverted, actionable toast.
+- Upload failure verified by stopping the Storage container mid-flight:
+  "File storage is having a problem right now. Nothing was uploaded — try
+  again in a moment," and the preview rolled back rather than showing a
+  picture that wasn't stored.
+- `next build` clean, ESLint clean, and the route table unchanged — `/`,
+  `/projects` and the project page are all still prerendered, so the new
+  route groups and guards cost nothing at build time.
+
+**Environment note:** the database and Storage are back to exactly
+`supabase/seed.sql`'s content (verified with `EXCEPT`), the `audit_backup`
+schema has been dropped, all test uploads were deleted through the Storage
+API (direct `DELETE` on `storage.objects` is blocked by a trigger), and all
+five Supabase containers plus the local admin account are healthy.
+
 ## Recurring lessons worth not re-learning
 
+- **`NEXT_PUBLIC_*` env vars are inlined at build time, so overriding one
+  at runtime does nothing to a production server.** `next dev` reads
+  `process.env` live, so the same override works there — which makes this
+  easy to "verify" against dev and then draw a false conclusion about prod.
+  To test an outage against a real build, stop the actual containers
+  (`docker stop supabase_rest_… supabase_kong_…`) rather than changing the
+  URL. Bit Phase 23 for a solid stretch of a "passing" test that was still
+  talking to a healthy database.
+- **A React `error.tsx` boundary does NOT catch a throw during static/ISR
+  generation.** It covers dynamic (`ƒ`) routes only. A page with
+  `revalidate` set and `dynamicParams` on generates unbuilt params at
+  request time as cacheable static output, and a throw there produces bare
+  "Internal Server Error" text with no boundary involved — visible only in
+  a production build, never in dev. Statically generated pages have to
+  catch their own data-layer failures and return a Server Component
+  fallback. And `connection()` cannot rescue that render: it throws
+  `DYNAMIC_SERVER_USAGE`, which becomes the same bare 500.
+- **Treating "couldn't verify" as "unauthenticated" in middleware breaks
+  Server Actions specifically.** Redirecting an action's POST to a login
+  page hands React an HTML response it can't parse as an action result —
+  the symptom is an "An unexpected response was received from the server"
+  unhandled rejection and an optimistic UI stuck mid-update, with no error
+  toast. Auth checks want three outcomes (authenticated / unauthenticated /
+  unavailable), not two, at every layer.
+- **Test image behaviour with a genuinely decodable image.** A byte array
+  with a PNG magic header renders as a broken image no matter what the code
+  does, which reads exactly like a bug in the component under test. Phase 23
+  nearly reported a non-existent blob-revocation bug this way; a real
+  `canvas.toBlob()` PNG showed the code was fine.
+- **Regex-scanning rendered HTML for `<button ... disabled` matches
+  Tailwind's `disabled:` variant class names**, not just the attribute.
+  Assert against the rendered control (or `element.disabled`), not a
+  substring of `class`.
 - **Metadata bugs do not throw.** Phase 22 shipped two that compiled,
   type-checked, and lint-passed while producing silently wrong output:
   `generateImageMetadata` given flat `width`/`height` keys instead of a

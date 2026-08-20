@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Achievement } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 const ADMIN_ACHIEVEMENT_COLUMNS =
   "id, title, description, date, organization, image_url, document_url, external_link, display_order, published";
@@ -20,7 +20,7 @@ export async function fetchAchievements(): Promise<Achievement[]> {
     .order("date", { ascending: false });
 
   if (error) {
-    logDataError("getAchievements", error);
+    handleDataError("getAchievements", error);
     return [];
   }
   return data ?? [];
@@ -43,7 +43,7 @@ export async function fetchAchievementsForAdmin(): Promise<AdminAchievement[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchAchievementsForAdmin", error);
+    handleDataError("fetchAchievementsForAdmin", error);
     return [];
   }
   return data ?? [];
@@ -59,7 +59,7 @@ export async function fetchAchievementByIdForAdmin(id: string): Promise<AdminAch
     .maybeSingle();
 
   if (error) {
-    logDataError(`fetchAchievementByIdForAdmin(${id})`, error);
+    handleDataError(`fetchAchievementByIdForAdmin(${id})`, error);
     return null;
   }
   return data;

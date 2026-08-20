@@ -599,3 +599,123 @@ standing rules:
   labelled "Open Screenshot 3" takes an empty alt so it isn't announced
   twice. `lib/media.ts`'s `resolveMediaLabel` is the one place that decision
   is made for project media (`alt_text` → `title` → a generated label).
+
+## Resilience
+
+Added in Phase 23. The goal: a visitor never sees a raw error, an empty
+band, a broken image, or an unexplained blank screen — and an admin never
+sees "Something went wrong" where a specific, actionable message was
+possible.
+
+### "Empty" and "unreachable" are different facts
+
+This is the load-bearing idea. Before Phase 23, every `lib/data` read
+swallowed its error and returned `null`/`[]`, so an unreachable database
+was indistinguishable from genuinely empty content. Confirmed by pointing
+`NEXT_PUBLIC_SUPABASE_URL` at a dead port, the result was three separate
+lies:
+
+- the homepage rendered a hollow shell — nav, "Hello, I'm Portfolio",
+  footer, every section silently self-hidden;
+- `/projects` said "No projects yet. Published projects will show up here
+  once they're added";
+- `/projects/[slug]` returned a blank 404, claiming a real project didn't
+  exist.
+
+And because those empty values were returned from inside
+`unstable_cache`, they were **cached for an hour** — seconds of database
+trouble kept the site looking empty long after it recovered.
+
+`lib/data/shared.ts` now classifies errors. Connectivity-class failures
+(transport errors, 5xx, PostgREST's JWT failures, Postgres `08*` connection
+codes) throw `DataUnavailableError`; everything else keeps the old
+log-and-return-empty behaviour, since those are developer bugs that
+shouldn't take a production page down. Throwing also means the bad value is
+never cached.
+
+`tolerateUnavailable(read, fallback)` opts specific callers back out of
+that: the site layout's chrome (which has hard-coded fallbacks for exactly
+this), `generateMetadata`, `sitemap.ts`, the OG image route, and
+`generateStaticParams` — that last one so an outage during a build can't
+fail the deploy. **Page content never tolerates**; that's the path that has
+to surface the degraded state.
+
+### Where the degraded state comes from — two different mechanisms
+
+Not one boundary, because one doesn't cover both render paths:
+
+| Render path | What handles an outage |
+| --- | --- |
+| Dynamic routes (`ƒ`) — all of `/admin` | `error.tsx` boundaries |
+| Statically generated / ISR (`○`, `●`) — the whole public site | The page's own `try`/`catch` returning `<ContentUnavailable />` |
+
+The second row was found the hard way. `app/(site)/error.tsx` works
+perfectly for dynamic routes — verified with PostgREST stopped, `/admin`
+rendered its boundary cleanly. But a slug that wasn't prerendered is
+generated on demand as *cacheable static output*, and a throw during that
+generation never reaches a React error boundary: Next returns bare
+"Internal Server Error" text. So the homepage, `/projects` and
+`/projects/[slug]` each guard their own data fetch and return a Server
+Component degraded state instead.
+
+`connection()` looks like the right way to keep that response out of the
+route cache, and isn't: it cannot convert an in-flight static generation,
+and throws `DYNAMIC_SERVER_USAGE` — which becomes the same bare 500. The
+accepted trade is that a degraded response may be cached for up to
+`revalidate` (verified: it is), clearing on the next revalidation or the
+moment the admin panel revalidates that entity's tag. A styled,
+self-healing page beats raw error text.
+
+### What error pages may say
+
+Every boundary renders `error.digest` — an opaque hash that lets a report
+be matched to a server log line — and **never `error.message`**. Next
+already redacts Server Component messages in production, but a *client*
+render error keeps its real message, so relying on the framework alone
+would leak. `ErrorScreen`'s `devDetail` prop is gated on `NODE_ENV` and
+compiles out of production builds. The real error is always logged in full,
+server-side.
+
+`app/global-error.tsx` is deliberately self-contained — it renders when the
+root layout itself failed, so it supplies its own `<html>`/`<body>`,
+imports `globals.css` directly, uses a plain `<a>` (a full document load is
+the recovery), and writes `background`/`color` as `var(--token, #literal)`
+so text stays legible even if the stylesheet didn't load.
+
+### Loading states
+
+Each `loading.tsx` is scoped to a segment with no dynamic children, using
+route groups (`(home)`, `(index)`) where the file would otherwise cascade.
+Two reasons: a hero-shaped skeleton flashing over `/projects` is worse than
+none, and the cascade is what caused Phase 18's hydration bug. Hydration on
+`/projects/[slug]` was re-verified live afterwards.
+
+The homepage additionally wraps each section in its own `<Suspense>` so one
+slow query streams alone instead of holding the document — observed
+working: five distinct section skeletons appeared and resolved
+independently on a cold navigation.
+
+### Admin
+
+- Optimistic mutations roll back visibly. Verified by stopping Postgres
+  with the list page open: the publish toggle flipped, the action failed,
+  the toggle returned to its original state and an error toast explained
+  why.
+- Uploads report **real byte progress** (`XMLHttpRequest`, because
+  `@supabase/storage-js` uploads via `fetch`, which has no progress event).
+- `lib/storage/errors.ts` maps Storage failures onto actionable copy — size
+  limits in megabytes, accepted file types by name, "your session expired",
+  "the bucket doesn't exist" — instead of a raw Postgres/Storage string or
+  a flat "Upload failed."
+- Auth failures distinguish three outcomes, not two. `resolveAdminAuth`
+  returns `authenticated` / `unauthenticated` / `unavailable`, so an
+  outage no longer tells an admin to sign in again — and no longer
+  redirects them to a login page backed by the same database. The
+  `unauthenticated` case still merges "no session" and "not the admin" into
+  one indistinguishable outcome, so nothing is leaked about which accounts
+  exist.
+
+### Empty states
+
+Audited field by field against the real database, with the results and the
+method in [docs/empty-states.md](./empty-states.md).

@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { STORAGE_BUCKETS } from "@/lib/constants";
 import { fileSchema } from "@/lib/validation";
 import { buildStoragePath, extractStoragePath, removeFiles, uploadFile } from "@/lib/storage/upload";
+import { describeUploadError } from "@/lib/storage/errors";
+import { UploadProgress } from "./UploadProgress";
 import { Button } from "@/components/admin/ui/button";
 
 export interface FileUploaderProps {
@@ -39,6 +41,7 @@ function fileNameFromUrl(url: string): string {
  */
 export function FileUploader({ value, onChange, bucket, recordId, label = "File", disabled }: FileUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [isDragActive, setIsDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const bucketConfig = STORAGE_BUCKETS[bucket];
@@ -50,14 +53,15 @@ export function FileUploader({ value, onChange, bucket, recordId, label = "File"
       return;
     }
 
+    setProgress(0);
     setIsUploading(true);
     try {
       const path = buildStoragePath(recordId, file);
-      const result = await uploadFile(bucketConfig.id, path, file);
+      const result = await uploadFile(bucketConfig.id, path, file, { onProgress: setProgress });
       onChange(result.url);
       toast.success("File uploaded.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed.");
+      toast.error(describeUploadError(error, bucketConfig));
     } finally {
       setIsUploading(false);
     }
@@ -142,6 +146,8 @@ export function FileUploader({ value, onChange, bucket, recordId, label = "File"
           ) : null}
         </div>
       </div>
+
+      {isUploading ? <UploadProgress percent={progress} label={label} variant="inline" /> : null}
 
       <input
         ref={inputRef}

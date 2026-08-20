@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { getAuthenticatedAdmin } from "@/lib/auth";
+import { resolveAdminAuth } from "@/lib/auth";
 import { getSiteSettings } from "@/lib/data";
 import { AdminShell } from "@/components/admin/AdminShell";
 
@@ -27,15 +27,25 @@ export const metadata: Metadata = {
  * redirect, or HTML that already reflects a confirmed admin session.
  */
 export default async function ProtectedAdminLayout({ children }: { children: ReactNode }) {
-  const admin = await getAuthenticatedAdmin();
+  const auth = await resolveAdminAuth();
 
-  if (!admin) {
+  // A database outage must not be treated as "signed out": /admin/login is
+  // backed by the same Postgres, so redirecting there during an outage is a
+  // loop the admin can't escape. Throwing instead lands on
+  // app/admin/error.tsx, which offers a retry and says to check the
+  // database — see lib/auth.ts's resolveAdminAuth for the full reasoning.
+  if (auth.status === "unavailable") {
+    throw new Error("Admin authentication is temporarily unavailable.");
+  }
+
+  if (auth.status === "unauthenticated") {
     // Reachable only if middleware was bypassed/misconfigured — in normal
     // operation it already redirected with a `next` param before this ever
     // runs, so there's no path here worth reproducing that param for.
     redirect("/admin/login");
   }
 
+  const admin = auth.admin;
   const siteSettings = await getSiteSettings();
   const blogEnabled = siteSettings?.feature_flags.blog_enabled ?? false;
 

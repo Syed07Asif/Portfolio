@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { getHomepageLastModified, getProjectSitemapEntries } from "@/lib/data";
+import { getHomepageLastModified, getProjectSitemapEntries, tolerateUnavailable } from "@/lib/data";
 import { absoluteUrl } from "@/lib/seo";
 
 /**
@@ -25,9 +25,11 @@ export const revalidate = 3600;
  *   route yet, so there is no URL to list (see docs/progress.md's "Next up").
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Tolerated: a sitemap listing only the static routes is a far better
+  // outcome than a 500 that tells a crawler the whole file is broken.
   const [projects, homepageLastModified] = await Promise.all([
-    getProjectSitemapEntries(),
-    getHomepageLastModified(),
+    tolerateUnavailable(getProjectSitemapEntries(), []),
+    tolerateUnavailable(getHomepageLastModified(), null),
   ]);
 
   // Entries come back newest-first, so the first row is the index page's own

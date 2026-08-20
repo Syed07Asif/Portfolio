@@ -5,13 +5,14 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, ExternalLink, FolderGit2 } from "lucide-react";
 import { Button, Card, Container, Divider, Tag } from "@/components/ui";
 import { JsonLd } from "@/components/seo/JsonLd";
-import { getProfile, getProjectBySlug, getProjectSlugs, getProjects } from "@/lib/data";
+import { DataUnavailableError, getProfile, getProjectBySlug, getProjectSlugs, getProjects, tolerateUnavailable } from "@/lib/data";
 import { fetchProjectBySlugForPreview } from "@/lib/data/projects";
 import { selectProjects } from "@/lib/projects";
 import { DEFAULT_WORDMARK } from "@/lib/constants";
 import { buildBreadcrumbJsonLd, buildProjectJsonLd, jsonLdGraph } from "@/lib/jsonLd";
 import { absoluteUrl, buildPageMetadata } from "@/lib/seo";
 import { formatOptionalDateRange, splitParagraphs } from "@/lib/utils";
+import { ContentUnavailable } from "@/components/sections/ContentUnavailable";
 import { ProjectCardImage } from "@/components/sections/projects/ProjectCardImage";
 import { ProjectStatusBadge } from "@/components/sections/projects/ProjectStatusBadge";
 import { ProjectMediaGallery } from "@/components/sections/projects/ProjectMediaGallery";
@@ -34,8 +35,14 @@ interface ProjectPageProps {
  */
 export const revalidate = 3600;
 
+/**
+ * Tolerated deliberately: an unreachable database at *build* time must not
+ * fail the deploy. `dynamicParams` is left at its default, so any slug that
+ * wasn't prerendered still renders on first request once the database is
+ * back — an empty list here costs nothing permanent.
+ */
 export async function generateStaticParams() {
-  const slugs = await getProjectSlugs();
+  const slugs = await tolerateUnavailable(getProjectSlugs(), []);
   return slugs.map((slug) => ({ slug }));
 }
 
@@ -54,8 +61,8 @@ export async function generateMetadata({ params }: ProjectPageProps): Promise<Me
   const { slug } = await params;
   const { isEnabled: isPreview } = await draftMode();
   const [project, profile] = await Promise.all([
-    isPreview ? fetchProjectBySlugForPreview(slug) : getProjectBySlug(slug),
-    getProfile(),
+    tolerateUnavailable(isPreview ? fetchProjectBySlugForPreview(slug) : getProjectBySlug(slug), null),
+    tolerateUnavailable(getProfile(), null),
   ]);
 
   if (!project) return {};
@@ -94,12 +101,35 @@ export default async function ProjectDetailPage({ params }: ProjectPageProps) {
   const { slug } = await params;
   const { isEnabled: isPreview } = await draftMode();
 
-  const [project, allProjects, profile] = await Promise.all([
-    isPreview ? fetchProjectBySlugForPreview(slug) : getProjectBySlug(slug),
-    getProjects(),
-    getProfile(),
-  ]);
+  // The degraded state is handled here, not in app/(site)/error.tsx: a slug
+  // that wasn't prerendered is generated on demand as *static* output, and a
+  // throw during that generation returns a bare "Internal Server Error"
+  // rather than reaching any boundary. See ContentUnavailable's own comment
+  // for how that was confirmed.
+  let project, allProjects, profile;
+  try {
+    [project, allProjects, profile] = await Promise.all([
+      isPreview ? fetchProjectBySlugForPreview(slug) : getProjectBySlug(slug),
+      getProjects(),
+      getProfile(),
+    ]);
+  } catch (error) {
+    if (!(error instanceof DataUnavailableError)) throw error;
+    // Deliberately NOT `connection()` here. Marking the render dynamic
+    // would be the ideal way to keep an outage out of the route cache, but
+    // it cannot convert an in-flight static generation — it throws
+    // DYNAMIC_SERVER_USAGE, which Next turns straight back into the bare
+    // 500 this guard exists to prevent (confirmed in a production build).
+    // So the degraded page may be cached for up to `revalidate`. That is
+    // the better of the two available trades: a styled, self-healing page
+    // beats raw error text, and it clears on the next revalidation or the
+    // moment the admin panel revalidates the projects tag.
+    return <ContentUnavailable retryHref={`/projects/${slug}`} />;
+  }
 
+  // Only reached when the store answered and genuinely has no such project —
+  // never when it simply couldn't be reached, which is the case that used to
+  // 404 a real project.
   if (!project) notFound();
 
   const authorName = profile?.full_name ?? DEFAULT_WORDMARK;

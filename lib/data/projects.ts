@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Project, ProjectDetail, ProjectFeature, ProjectMedia, ProjectTechnology } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 type ProjectRow = Omit<Project, "technologies"> & {
   project_technologies: Pick<ProjectTechnology, "id" | "name">[];
@@ -37,7 +37,7 @@ export async function fetchProjects(options: { featuredOnly?: boolean; limit?: n
 
   const { data, error } = await query;
   if (error) {
-    logDataError("getProjects", error);
+    handleDataError("getProjects", error);
     return [];
   }
 
@@ -62,7 +62,7 @@ export async function fetchProjectSlugs(): Promise<string[]> {
     .order("slug", { ascending: true });
 
   if (error) {
-    logDataError("getProjectSlugs", error);
+    handleDataError("getProjectSlugs", error);
     return [];
   }
   return (data ?? []).map((row) => row.slug);
@@ -103,7 +103,7 @@ export async function fetchProjectBySlug(slug: string): Promise<ProjectDetail | 
     .maybeSingle();
 
   if (error) {
-    logDataError(`getProjectBySlug(${slug})`, error);
+    handleDataError(`getProjectBySlug(${slug})`, error);
     return null;
   }
   if (!data) {
@@ -156,7 +156,7 @@ export async function fetchProjectBySlugForPreview(slug: string): Promise<Projec
     .maybeSingle();
 
   if (error) {
-    logDataError(`fetchProjectBySlugForPreview(${slug})`, error);
+    handleDataError(`fetchProjectBySlugForPreview(${slug})`, error);
     return null;
   }
   if (!data) {
@@ -205,7 +205,7 @@ export async function fetchProjectsForAdmin(): Promise<AdminProjectListItem[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchProjectsForAdmin", error);
+    handleDataError("fetchProjectsForAdmin", error);
     return [];
   }
 
@@ -253,7 +253,7 @@ export async function fetchProjectByIdForAdmin(id: string): Promise<AdminProject
     .maybeSingle();
 
   if (error) {
-    logDataError(`fetchProjectByIdForAdmin(${id})`, error);
+    handleDataError(`fetchProjectByIdForAdmin(${id})`, error);
     return null;
   }
   if (!data) return null;
@@ -281,7 +281,7 @@ export async function fetchProjectTechnologyNames(): Promise<string[]> {
   const { data, error } = await supabase.from("project_technologies").select("name");
 
   if (error) {
-    logDataError("fetchProjectTechnologyNames", error);
+    handleDataError("fetchProjectTechnologyNames", error);
     return [];
   }
 

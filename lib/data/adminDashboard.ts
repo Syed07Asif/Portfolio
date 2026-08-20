@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 export interface EntityCounts {
   total: number;
@@ -180,7 +180,7 @@ export async function fetchAdminDashboardStats(): Promise<AdminDashboardStats> {
       recentItems,
     };
   } catch (error) {
-    logDataError("fetchAdminDashboardStats", error);
+    handleDataError("fetchAdminDashboardStats", error);
     return EMPTY_STATS;
   }
 }

@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Resume } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 /** Raw query, unwrapped — see profile.ts's fetchProfile for why. */
 export async function fetchActiveResume(): Promise<Resume | null> {
@@ -14,7 +14,7 @@ export async function fetchActiveResume(): Promise<Resume | null> {
     .maybeSingle();
 
   if (error) {
-    logDataError("getActiveResume", error);
+    handleDataError("getActiveResume", error);
     return null;
   }
   return data;
@@ -37,7 +37,7 @@ export async function fetchResumesForAdmin(): Promise<AdminResume[]> {
     .order("uploaded_at", { ascending: false });
 
   if (error) {
-    logDataError("fetchResumesForAdmin", error);
+    handleDataError("fetchResumesForAdmin", error);
     return [];
   }
   return data ?? [];

@@ -2,11 +2,13 @@
 
 import { useRef, useState, type DragEvent } from "react";
 import { toast } from "sonner";
-import { ImageOffIcon, Loader2Icon, UploadIcon, XIcon } from "lucide-react";
+import { ImageOffIcon, UploadIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { STORAGE_BUCKETS } from "@/lib/constants";
 import { fileSchema } from "@/lib/validation";
 import { buildStoragePath, extractStoragePath, removeFiles, uploadFile } from "@/lib/storage/upload";
+import { describeUploadError } from "@/lib/storage/errors";
+import { UploadProgress } from "./UploadProgress";
 import { Button } from "@/components/admin/ui/button";
 
 export interface ImageUploaderProps {
@@ -20,14 +22,16 @@ export interface ImageUploaderProps {
 }
 
 /**
- * Single-image drag/drop-or-click uploader. No native upload-progress
- * callback exists in the installed `@supabase/storage-js` — this shows a
- * deliberate indeterminate spinner instead of a byte percentage, a
- * conscious tradeoff, not an oversight.
+ * Single-image drag/drop-or-click uploader. Shows real byte progress: the
+ * spinner used to be indeterminate because `@supabase/storage-js` uploads
+ * via `fetch`, which has no upload-progress event — Phase 23 moved
+ * `uploadFile` onto `XMLHttpRequest` for exactly this, so the percentage
+ * below is genuine, not a simulated animation.
  */
 export function ImageUploader({ value, onChange, bucket, recordId, label = "Image", disabled }: ImageUploaderProps) {
   const [preview, setPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [isDragActive, setIsDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -43,15 +47,18 @@ export function ImageUploader({ value, onChange, bucket, recordId, label = "Imag
 
     const objectUrl = URL.createObjectURL(file);
     setPreview(objectUrl);
+    setProgress(0);
     setIsUploading(true);
 
     try {
       const path = buildStoragePath(recordId, file);
-      const result = await uploadFile(bucketConfig.id, path, file);
+      const result = await uploadFile(bucketConfig.id, path, file, { onProgress: setProgress });
       onChange(result.url);
       toast.success("Image uploaded.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Upload failed.");
+      // Rolls the preview back to whatever was saved before, so a failed
+      // upload never leaves a picture on screen that isn't really stored.
+      toast.error(describeUploadError(error, bucketConfig));
       setPreview(null);
     } finally {
       setIsUploading(false);
@@ -113,11 +120,7 @@ export function ImageUploader({ value, onChange, bucket, recordId, label = "Imag
           </>
         )}
 
-        {isUploading ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/70">
-            <Loader2Icon className="size-6 animate-spin text-foreground" aria-hidden="true" />
-          </div>
-        ) : null}
+        {isUploading ? <UploadProgress percent={progress} label={label} /> : null}
 
         {!isUploading && displayUrl && !disabled ? (
           <div className="absolute inset-0 flex items-center justify-center gap-2 bg-background/60 opacity-0 transition-opacity hover:opacity-100">

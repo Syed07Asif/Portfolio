@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getAuthenticatedAdmin, type AuthenticatedAdmin } from "@/lib/auth";
+import { resolveAdminAuth, type AuthenticatedAdmin } from "@/lib/auth";
 
 /**
  * Every mutating entity action returns one of these instead of throwing —
@@ -74,10 +74,20 @@ export function createAdminAction<TArgs extends unknown[], TResult>(
   handler: (admin: AuthenticatedAdmin, ...args: TArgs) => Promise<ActionResult<TResult>>,
 ) {
   return async (...args: TArgs): Promise<ActionResult<TResult>> => {
-    const admin = await getAuthenticatedAdmin();
-    if (!admin) {
+    const auth = await resolveAdminAuth();
+
+    // Three-way, not two: "we couldn't check" is not "you're signed out",
+    // and telling an admin to sign in again during a database outage sends
+    // them to a login page that can't work either.
+    if (auth.status === "unavailable") {
+      return actionError(
+        "Couldn't reach the database to verify your session. Nothing was saved — try again in a moment.",
+      );
+    }
+    if (auth.status === "unauthenticated") {
       return actionError("You must be signed in as an admin to do that.");
     }
+    const admin = auth.admin;
 
     try {
       return await handler(admin, ...args);

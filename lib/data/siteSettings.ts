@@ -3,7 +3,7 @@ import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { FeatureFlags, NavItem, SiteSettings } from "@/types/content";
 import type { NavItemInput } from "@/lib/validation/siteSettings";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 /** Raw query, unwrapped — see profile.ts's fetchProfile for why. */
 export async function fetchSiteSettings(): Promise<SiteSettings | null> {
@@ -16,7 +16,7 @@ export async function fetchSiteSettings(): Promise<SiteSettings | null> {
     .maybeSingle();
 
   if (error) {
-    logDataError("getSiteSettings", error);
+    handleDataError("getSiteSettings", error);
     return null;
   }
   if (!data || !data.site_title) {
@@ -73,7 +73,7 @@ export async function fetchSiteSettingsForAdmin(): Promise<AdminSiteSettings | n
     .maybeSingle();
 
   if (error) {
-    logDataError("fetchSiteSettingsForAdmin", error);
+    handleDataError("fetchSiteSettingsForAdmin", error);
     return null;
   }
   if (!data) return null;

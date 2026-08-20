@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { BlogPost } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 /**
  * Admin-only module — no public `fetchX`/`getX` pair exists here, unlike
@@ -23,7 +23,7 @@ export async function fetchBlogPostsForAdmin(): Promise<AdminBlogPost[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchBlogPostsForAdmin", error);
+    handleDataError("fetchBlogPostsForAdmin", error);
     return [];
   }
   return data ?? [];
@@ -38,7 +38,7 @@ export async function fetchBlogPostByIdForAdmin(id: string): Promise<AdminBlogPo
     .maybeSingle();
 
   if (error) {
-    logDataError(`fetchBlogPostByIdForAdmin(${id})`, error);
+    handleDataError(`fetchBlogPostByIdForAdmin(${id})`, error);
     return null;
   }
   return data;

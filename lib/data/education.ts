@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Education } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 const ADMIN_EDUCATION_COLUMNS =
   "id, institution, degree, field_of_study, institution_logo_url, start_date, end_date, grade, description, link_url, display_order, published";
@@ -23,7 +23,7 @@ export async function fetchEducation(): Promise<Education[]> {
     .order("start_date", { ascending: false });
 
   if (error) {
-    logDataError("getEducation", error);
+    handleDataError("getEducation", error);
     return [];
   }
   return data ?? [];
@@ -54,7 +54,7 @@ export async function fetchEducationForAdmin(): Promise<AdminEducation[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchEducationForAdmin", error);
+    handleDataError("fetchEducationForAdmin", error);
     return [];
   }
   return data ?? [];
@@ -66,7 +66,7 @@ export async function fetchEducationByIdForAdmin(id: string): Promise<AdminEduca
   const { data, error } = await supabase.from("education").select(ADMIN_EDUCATION_COLUMNS).eq("id", id).maybeSingle();
 
   if (error) {
-    logDataError(`fetchEducationByIdForAdmin(${id})`, error);
+    handleDataError(`fetchEducationByIdForAdmin(${id})`, error);
     return null;
   }
   return data;

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getActiveResume } from "@/lib/data";
+import { getActiveResume, tolerateUnavailable } from "@/lib/data";
 import { RESUME_DOWNLOAD_FILENAME } from "@/lib/constants";
 
 /**
@@ -27,7 +27,10 @@ import { RESUME_DOWNLOAD_FILENAME } from "@/lib/constants";
  * assumed.
  */
 export async function GET() {
-  const resume = await getActiveResume();
+  // Tolerated: the /resume/unavailable page is already the right
+  // destination for "there's nothing to serve you right now", whether the
+  // cause is no active resume or an unreachable database.
+  const resume = await tolerateUnavailable(getActiveResume(), null);
 
   if (!resume) {
     redirect("/resume/unavailable");

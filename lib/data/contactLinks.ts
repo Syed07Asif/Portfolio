@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { ContactLink } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 const ADMIN_CONTACT_LINK_COLUMNS = "id, label, type, value, url, icon, display_order, published";
 
@@ -17,7 +17,7 @@ export async function fetchContactLinks(): Promise<ContactLink[]> {
     .order("label", { ascending: true });
 
   if (error) {
-    logDataError("getContactLinks", error);
+    handleDataError("getContactLinks", error);
     return [];
   }
   return data ?? [];
@@ -40,7 +40,7 @@ export async function fetchContactLinksForAdmin(): Promise<AdminContactLink[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchContactLinksForAdmin", error);
+    handleDataError("fetchContactLinksForAdmin", error);
     return [];
   }
   return data ?? [];
@@ -56,7 +56,7 @@ export async function fetchContactLinkByIdForAdmin(id: string): Promise<AdminCon
     .maybeSingle();
 
   if (error) {
-    logDataError(`fetchContactLinkByIdForAdmin(${id})`, error);
+    handleDataError(`fetchContactLinkByIdForAdmin(${id})`, error);
     return null;
   }
   return data;

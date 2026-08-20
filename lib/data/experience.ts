@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Experience } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 const ADMIN_EXPERIENCE_COLUMNS =
   "id, company, role, company_logo_url, location, employment_type, start_date, end_date, is_current, description, responsibilities, technologies, link_url, display_order, published";
@@ -23,7 +23,7 @@ export async function fetchExperience(): Promise<Experience[]> {
     .order("start_date", { ascending: false });
 
   if (error) {
-    logDataError("getExperience", error);
+    handleDataError("getExperience", error);
     return [];
   }
   return data ?? [];
@@ -43,7 +43,7 @@ export async function fetchExperienceForAdmin(): Promise<AdminExperience[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchExperienceForAdmin", error);
+    handleDataError("fetchExperienceForAdmin", error);
     return [];
   }
   return data ?? [];
@@ -54,7 +54,7 @@ export async function fetchExperienceByIdForAdmin(id: string): Promise<AdminExpe
   const { data, error } = await supabase.from("experience").select(ADMIN_EXPERIENCE_COLUMNS).eq("id", id).maybeSingle();
 
   if (error) {
-    logDataError(`fetchExperienceByIdForAdmin(${id})`, error);
+    handleDataError(`fetchExperienceByIdForAdmin(${id})`, error);
     return null;
   }
   return data;

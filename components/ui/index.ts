@@ -12,6 +12,8 @@ export { Divider } from "./Divider";
 export type { DividerProps } from "./Divider";
 export { EmptyState } from "./EmptyState";
 export type { EmptyStateProps } from "./EmptyState";
+export { ErrorScreen } from "./ErrorScreen";
+export type { ErrorScreenProps } from "./ErrorScreen";
 export { IconButton } from "./IconButton";
 export type { IconButtonProps } from "./IconButton";
 export { Section } from "./Section";

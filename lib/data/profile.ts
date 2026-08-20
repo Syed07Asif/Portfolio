@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Profile } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 const PROFILE_COLUMNS =
   "id, full_name, headline, short_bio, long_bio, avatar_url, location, availability_status, current_role, tagline";
@@ -13,7 +13,7 @@ export async function fetchProfile(): Promise<Profile | null> {
   const { data, error } = await supabase.from("profile").select(PROFILE_COLUMNS).maybeSingle();
 
   if (error) {
-    logDataError("getProfile", error);
+    handleDataError("getProfile", error);
     return null;
   }
   return data;
@@ -40,7 +40,7 @@ export async function fetchProfileForAdmin(): Promise<Profile | null> {
   const { data, error } = await supabase.from("profile").select(PROFILE_COLUMNS).maybeSingle();
 
   if (error) {
-    logDataError("fetchProfileForAdmin", error);
+    handleDataError("fetchProfileForAdmin", error);
     return null;
   }
   return data;

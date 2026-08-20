@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { SkillCategory, SkillCategoryWithSkills } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 type SkillCategoryRow = SkillCategory & {
   skills: {
@@ -29,7 +29,7 @@ export async function fetchSkillCategoriesWithSkills(): Promise<SkillCategoryWit
     .order("display_order", { referencedTable: "skills", ascending: true });
 
   if (error) {
-    logDataError("getSkillCategoriesWithSkills", error);
+    handleDataError("getSkillCategoriesWithSkills", error);
     return [];
   }
 
@@ -78,7 +78,7 @@ export async function fetchSkillCategoriesWithSkillsForAdmin(): Promise<AdminSki
     .order("display_order", { referencedTable: "skills", ascending: true });
 
   if (error) {
-    logDataError("fetchSkillCategoriesWithSkillsForAdmin", error);
+    handleDataError("fetchSkillCategoriesWithSkillsForAdmin", error);
     return [];
   }
 
@@ -94,7 +94,7 @@ export async function fetchSkillCategoriesForAdmin(): Promise<SkillCategory[]> {
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchSkillCategoriesForAdmin", error);
+    handleDataError("fetchSkillCategoriesForAdmin", error);
     return [];
   }
   return data ?? [];
@@ -109,7 +109,7 @@ export async function fetchSkillCategoryByIdForAdmin(id: string): Promise<SkillC
     .maybeSingle();
 
   if (error) {
-    logDataError(`fetchSkillCategoryByIdForAdmin(${id})`, error);
+    handleDataError(`fetchSkillCategoryByIdForAdmin(${id})`, error);
     return null;
   }
   return data;
@@ -120,7 +120,7 @@ export async function fetchSkillByIdForAdmin(id: string): Promise<AdminSkill | n
   const { data, error } = await supabase.from("skills").select(ADMIN_SKILL_COLUMNS).eq("id", id).maybeSingle();
 
   if (error) {
-    logDataError(`fetchSkillByIdForAdmin(${id})`, error);
+    handleDataError(`fetchSkillByIdForAdmin(${id})`, error);
     return null;
   }
   return data;

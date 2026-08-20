@@ -1,25 +1,28 @@
 import Link from "next/link";
 import { FolderSearch } from "lucide-react";
-import { Button, Container, EmptyState } from "@/components/ui";
+import { Button, ErrorScreen } from "@/components/ui";
 
 /**
- * Route-segment not-found — anything under /projects that calls
- * `notFound()` (an unknown or unpublished slug) renders this instead of
- * the generic root 404, so the message and the way back are specific to
- * where the visitor actually was.
+ * Route-segment not-found for anything under /projects that isn't a
+ * project detail page — the detail route has its own, more specific
+ * `[slug]/not-found.tsx`, which wins for that segment. Kept so a stray
+ * `/projects/whatever/extra` still lands somewhere deliberate instead of
+ * the root 404, which has no site chrome around it.
+ *
+ * Uses the same `ErrorScreen` treatment as every other error surface: a
+ * 404 that looks like a different website is its own kind of alarming.
  */
-export default function ProjectNotFound() {
+export default function ProjectsNotFound() {
   return (
-    <Container className="flex flex-col items-center py-(--space-section-y)">
-      <EmptyState
-        icon={FolderSearch}
-        titleAs="h1"
-        title="Project not found"
-        description="This project doesn't exist, or isn't published yet. It may have moved or been renamed."
-      />
-      <Button asChild className="mt-6">
-        <Link href="/projects">Back to all projects</Link>
-      </Button>
-    </Container>
+    <ErrorScreen
+      icon={FolderSearch}
+      title="Page not found"
+      description="There's nothing at this address under Projects. It may have moved, or the link may be out of date."
+      actions={
+        <Button asChild>
+          <Link href="/projects">Back to all projects</Link>
+        </Button>
+      }
+    />
   );
 }

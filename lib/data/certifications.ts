@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 import { createClient, createStaticClient } from "@/lib/supabase/server";
 import { CACHE_TAGS } from "@/lib/constants";
 import type { Certification } from "@/types/content";
-import { logDataError } from "./shared";
+import { handleDataError } from "./shared";
 
 const ADMIN_CERTIFICATION_COLUMNS =
   "id, name, issuing_organization, organization_logo_url, issue_date, expiration_date, credential_id, credential_url, certificate_file_url, description, display_order, published";
@@ -20,7 +20,7 @@ export async function fetchCertifications(): Promise<Certification[]> {
     .order("issue_date", { ascending: false });
 
   if (error) {
-    logDataError("getCertifications", error);
+    handleDataError("getCertifications", error);
     return [];
   }
   return data ?? [];
@@ -43,7 +43,7 @@ export async function fetchCertificationsForAdmin(): Promise<AdminCertification[
     .order("display_order", { ascending: true });
 
   if (error) {
-    logDataError("fetchCertificationsForAdmin", error);
+    handleDataError("fetchCertificationsForAdmin", error);
     return [];
   }
   return data ?? [];
@@ -59,7 +59,7 @@ export async function fetchCertificationByIdForAdmin(id: string): Promise<AdminC
     .maybeSingle();
 
   if (error) {
-    logDataError(`fetchCertificationByIdForAdmin(${id})`, error);
+    handleDataError(`fetchCertificationByIdForAdmin(${id})`, error);
     return null;
   }
   return data;

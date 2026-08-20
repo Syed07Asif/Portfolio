@@ -5,6 +5,28 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveNextPath } from "@/lib/auth";
 import { adminLoginSchema } from "@/lib/validation";
 
+/**
+ * True when sign-in failed before it could be judged — no network, DNS
+ * failure, a dead Supabase URL, or a 5xx from the auth service. Everything
+ * else stays behind the single generic credential message, which is what
+ * keeps "does this email exist?" unanswerable.
+ */
+function isAuthTransportFailure(error: { name?: string; status?: number; message?: string }): boolean {
+  if (error.name === "AuthRetryableFetchError") return true;
+  if (typeof error.status === "number" && error.status >= 500) return true;
+  if (!error.status) {
+    const message = (error.message ?? "").toLowerCase();
+    return (
+      message.includes("fetch failed") ||
+      message.includes("econnrefused") ||
+      message.includes("enotfound") ||
+      message.includes("network") ||
+      message.includes("timeout")
+    );
+  }
+  return false;
+}
+
 export interface SignInState {
   error: string | null;
 }
@@ -38,6 +60,21 @@ export async function signIn(_prevState: SignInState, formData: FormData): Promi
     if (signInError.status === 429) {
       return { error: "Too many attempts. Please wait a moment and try again." };
     }
+
+    // A transport failure is not a credential failure, and saying "invalid
+    // email or password" when the auth server simply couldn't be reached
+    // sends the admin off resetting a password that was never wrong.
+    // supabase-js surfaces this as AuthRetryableFetchError with status 0 or
+    // undefined; the message check covers the plain-fetch shape too. This
+    // leaks nothing about whether the account exists — it never got far
+    // enough to find out.
+    if (isAuthTransportFailure(signInError)) {
+      console.error("[admin/login] auth unreachable:", signInError.message);
+      return {
+        error: "Couldn't reach the authentication service. Check your connection and try again — your details weren't sent.",
+      };
+    }
+
     return { error: "Invalid email or password." };
   }
 

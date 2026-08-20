@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { getProfile, getProjectBySlug, getProjectSlugs, getSiteSettings } from "@/lib/data";
+import { getProfile, getProjectBySlug, getProjectSlugs, getSiteSettings, tolerateUnavailable } from "@/lib/data";
 import { DEFAULT_WORDMARK } from "@/lib/constants";
 import { OG_IMAGE_SIZE, absoluteUrl } from "@/lib/seo";
 
@@ -21,7 +21,7 @@ export const contentType = "image/png";
 export const revalidate = 3600;
 
 export async function generateStaticParams() {
-  const slugs = await getProjectSlugs();
+  const slugs = await tolerateUnavailable(getProjectSlugs(), []);
   return slugs.map((slug) => ({ slug }));
 }
 
@@ -32,7 +32,7 @@ export async function generateStaticParams() {
  */
 export async function generateImageMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const project = await getProjectBySlug(slug);
+  const project = await tolerateUnavailable(getProjectBySlug(slug), null);
 
   return [
     {
@@ -95,10 +95,13 @@ async function resolveBackdrop(candidate: string | null | undefined): Promise<st
 
 export default async function ProjectOpenGraphImage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  // Tolerated throughout: this route must always return an image. With the
+  // database unreachable every value below is null and the card degrades to
+  // the generic branded one, which is still a valid social preview.
   const [project, profile, siteSettings] = await Promise.all([
-    getProjectBySlug(slug),
-    getProfile(),
-    getSiteSettings(),
+    tolerateUnavailable(getProjectBySlug(slug), null),
+    tolerateUnavailable(getProfile(), null),
+    tolerateUnavailable(getSiteSettings(), null),
   ]);
 
   const brandName = profile?.full_name ?? DEFAULT_WORDMARK;
