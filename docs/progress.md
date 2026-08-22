@@ -3282,6 +3282,13 @@ It stays useful after the fix, for the one case no delete path can catch: an
 upload that succeeds and is then abandoned, because the admin replaced the
 image before saving or closed a half-filled create form.
 
+*Released as `v1.0.1`.* The fix commit is `0c12dd4` on `develop`, merged to
+`main` as `98c20b2` and tagged **`v1.0.1`**, both pushed. `main` and
+`develop` are identical again. Upgrading from `v1.0.0` needs no migration and
+no config change — but if `v1.0.0` ever ran against a real project, run
+`npm run storage:orphans` once to see what it stranded and again with
+`--delete` to reclaim it.
+
 *Docs corrected.* content-management.md's "Uploads and storage cleanup" now
 describes the primary-key scheme and the bug it replaced;
 development.md's FUTURE WORK entry no longer claims deletes leak, and its
