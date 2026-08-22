@@ -205,9 +205,12 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   local test admin account had to be recreated afterward — see the account
   bullet below and Phase 17's log entry for the exact steps.
 
-- **Branch:** `develop` (all phase work happens here; `main` is still just
-  the Phase 1 scaffold — nothing has been merged up yet). Tracks
-  `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
+- **Branch:** `develop` for work; **`main` now holds the release.** Phase 25
+  merged `develop` into `main` as `2b9d630` ("Release v1.0.0") and tagged
+  **`v1.0.0`**; both are pushed. Before that, `main` had been the Phase 1
+  scaffold (`c859f71`) with nothing merged up. Both branches track
+  `https://github.com/Syed07Asif/Portfolio.git`, and `main` and `develop`
+  are identical in content — `git diff develop main` is empty.
 - **Phase 24 tooling is installed but unused.** `lighthouse`, `axe-core`,
   `vitest` and `@playwright/test` are in `devDependencies` (committed, so
   the tree is clean and a fresh session doesn't have to re-install). No
@@ -260,7 +263,17 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`. No new dependencies were needed for Phase 20.
-- **Latest commit:** `b427693` — "Phase 24: verify and harden —
+- **Latest commit:** `42ef9ac` — "Phase 25: launch readiness — security
+  headers, backups, and documentation," pushed to `origin/develop` (16 files
+  — `git show 42ef9ac --stat`; the commit message carries the full
+  reasoning and this file's Phase 25 entry the narrative). `develop` was
+  then merged into `main` as **`2b9d630`** and tagged **`v1.0.0`**, both
+  pushed. This very edit (recording those hashes) is a docs-only follow-up
+  on top of `42ef9ac`, so expect `git log --oneline` on `develop` to show
+  one commit above it that changed nothing but `docs/progress.md` — and
+  note `main` will then be one commit *behind* `develop` again until that
+  follow-up is merged up, which is expected and not a problem.
+  Before that, `b427693` — "Phase 24: verify and harden —
   accessibility, performance, and a test suite," pushed to `origin/develop`
   (39 files — `git show b427693 --stat`; the commit message carries the full
   reasoning, and this file's Phase 24 entry the narrative, including the
