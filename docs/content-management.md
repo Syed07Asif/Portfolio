@@ -14,6 +14,36 @@ to be re-deployed, and no one needs to touch a file.
 
 # Part 1 — Using the admin panel
 
+## Every screen at a glance
+
+Ten screens in the sidebar. Each one is documented in full below.
+
+| Screen | What it controls | Shows on |
+| --- | --- | --- |
+| [Profile](#profile) | Your name, headline, role, tagline, bio, avatar | Hero and About |
+| [Skills](#skills) | Skill categories and the skills inside them | Skills section |
+| [Experience](#experience) | Jobs — company, role, dates, description, logo | Experience timeline |
+| [Education](#education) | Degrees and institutions | Education section |
+| [Projects](#projects) | Projects, plus their technologies, features and media gallery | Projects grid and each project's own page |
+| [Certifications](#certifications) | Certifications, issuers, credential links | Certifications section |
+| [Achievements](#achievements) | Awards, publications, recognitions | Achievements section |
+| [Contact](#contact) | Your links — email, LinkedIn, GitHub and so on | Contact section and footer |
+| [Resume](#resume) | Uploaded resume PDFs, and which one is live | The Download Resume button, everywhere |
+| [Settings](#settings) | Nav items, site title, default social-sharing image | Navbar, browser tab, link previews |
+| [Blog](#blog) | Blog posts | Nothing yet — the public blog isn't built |
+
+**Projects is the big one.** It's the screen with the most fields and the
+only one with a media gallery, and it's where most of your time will go.
+
+Two things are true of every screen:
+
+- **Nothing you type is live until you publish it.** See
+  [How publishing works](#how-publishing-works) immediately below.
+- **Nothing you do here requires a developer or a re-deploy.** If something
+  you want to change isn't on one of these screens, *that's* when you need a
+  developer — because it means the field doesn't exist yet.
+
+
 ## Signing in
 
 Go to `/admin`. You'll be asked for your email and password. There's
@@ -376,6 +406,43 @@ the site, whatever you set its status to.
 - **Status** — **Draft** or **Published**, instead of the Published switch
   other screens use. The first time you set a post to Published, the site
   records when it went live; setting it back to Draft clears that.
+
+## Keeping a copy of everything
+
+Everything you type here lives in one place: the Supabase database. Every
+image you upload lives in one place: Supabase Storage. If that account were
+lost, closed or wiped, the site's content would be gone — the code on GitHub
+would rebuild an empty site.
+
+So there are two commands that make a copy. They're run from a terminal, so
+this is the one part of running the site that isn't a form:
+
+```bash
+npm run backup
+```
+
+That writes every row and every uploaded file into a `backups/` folder — a
+timestamped snapshot you can keep on a drive or in cloud storage. It includes
+unpublished drafts, so a half-written project you haven't shown anyone yet is
+still protected.
+
+Worth doing:
+
+- **Every month or so**, as a habit.
+- **After adding significant media** — a batch of project screenshots is the
+  most expensive thing here to recreate, because it can't be retyped.
+- **Before anything that feels risky**, like deleting a project you might
+  want back.
+
+Two more things already have copies without you doing anything:
+
+- **The code** is on GitHub, and every clone is a full copy of its history.
+- **Your current resume PDF** is committed in the repository. When you upload
+  a new resume through the Resume screen, ask whoever maintains the code to
+  commit the new PDF too — that's what keeps a copy of it outside Supabase.
+
+The full detail, including how to restore from a backup, is in
+[docs/deployment.md](./deployment.md#backups).
 
 ---
 

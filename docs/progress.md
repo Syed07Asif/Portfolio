@@ -91,6 +91,23 @@ recreating that admin account afterward. This bit Phase 21.
 
 ## Where things stand
 
+> **Phases 1-25 are complete. Phase 25 was the final phase.** The codebase is
+> release-ready and tagged `v1.0.0` on `main`. **It is not deployed.**
+> Everything that needs Syed's own Vercel / Supabase / registrar accounts —
+> creating the hosted Supabase project, connecting Vercel, the custom domain,
+> and the production smoke test — is an ordered runbook in
+> [docs/deployment.md](./deployment.md), written but **not executed**, because
+> this session cannot create accounts or enter credentials. Read Phase 25's
+> log entry at the very bottom of this file for the full account, including
+> what it found and fixed.
+>
+> Phase 25 changed four things in the code: security headers + CSP in
+> `next.config.ts`, `images.dangerouslyAllowLocalIP` gated on a local Supabase
+> host (a real Next 16 behaviour, see the entry), a fifth migration granting
+> `service_role` the table privileges it never had, and a new `scripts/`
+> folder holding the two backup/export scripts. Docs were rewritten wholesale.
+
+
 **Phases 1–24 are done and verified. Phase 24 (verify and harden) is
 complete** — axe-core reports **0 violations across all five audited pages**
 (3 violation types / 9 nodes before), Lighthouse is **100 desktop / 91–95
@@ -2979,3 +2996,158 @@ When the next prompt arrives, update this file's "Where things stand" and
 add a new phase-log entry the same way the ones above are written: what got
 built, key files touched, and anything non-obvious a future session would
 otherwise have to re-discover the hard way.
+
+---
+
+**Phase 25 — launch: security headers, backups, docs, and the release.**
+The final phase. What could be done from this machine was done and verified;
+what needs Syed's own Vercel, Supabase and registrar accounts is written up
+as a runbook in [docs/deployment.md](./deployment.md) rather than guessed at.
+**Nothing is deployed yet** — see "What Phase 25 could not do" below, which
+is the honest list.
+
+*Pre-deployment checks (all green).* `npm run build` clean, `npx tsc
+--noEmit` clean, `npm run lint` zero errors, zero `console.log` in `app/`,
+`components/`, `lib/` or `hooks/`, and one non-blocking `TODO` (a download
+counter in `app/(site)/resume/route.ts`, deliberately deferred along with
+analytics). The git-history secret scan swept **all 26 commits' contents**,
+not just the working tree, via `git grep` over `git rev-list --all`; the only
+matches were `.env.example`'s `your-service-role-key` placeholder and an npm
+integrity hash in `package-lock.json`. `.env.example` is the only env file
+ever tracked. As a belt-and-braces check the *built* client bundles were
+grepped for the literal service-role key value and for the string
+`SERVICE_ROLE`: neither appears.
+
+*Security headers.* CSP plus X-Frame-Options, X-Content-Type-Options,
+Referrer-Policy, Permissions-Policy, X-DNS-Prefetch-Control and HSTS, all in
+`next.config.ts`'s `headers()`. Reference material — including the full
+reasoning for a static CSP over a per-request nonce — is in
+[docs/architecture.md](./architecture.md#security-headers-and-csp). Three
+things a future session should not re-derive:
+
+- **The nonce was considered and rejected on purpose.** Next can only inject
+  a nonce while dynamically rendering, so adopting one disables static
+  generation and ISR across the entire public site. What it buys is removing
+  `'unsafe-inline'` from `script-src`, and the XSS surface that closes is
+  empty here (no visitor-influenced HTML; the single
+  `dangerouslySetInnerHTML` is `JsonLd.tsx`'s escaped JSON-LD data block).
+  **This calculation changes if the blog ships with Markdown bodies.**
+- **`upgrade-insecure-requests` and HSTS are gated on
+  `NEXT_PUBLIC_SITE_URL` being `https:`.** Without that gate,
+  `upgrade-insecure-requests` rewrites every call to `http://127.0.0.1:54321`
+  and breaks the whole local stack. It is the only difference between the
+  policy verified locally and the one production serves.
+- **The Supabase origin in the CSP and in `images.remotePatterns` come from
+  one shared function**, so the two cannot drift apart.
+
+*A real Next 16 behaviour found by testing, not by reading.* `/_next/image`
+answered `400 "url" parameter is not allowed` for a Supabase Storage URL. The
+cause is **`images.dangerouslyAllowLocalIP`, new in Next 16.0.0 and `false`
+by default** — an SSRF guard that refuses to optimize remote images on
+local/private IPs, which the local stack (`127.0.0.1:54321`) is. It does not
+reproduce in production, where the host is `<ref>.supabase.co`.
+`next.config.ts` now enables the flag **only when the configured Supabase
+host is itself loopback/private**, so local matches production and production
+keeps the guard. Found only by uploading a real file and then requesting its
+optimized URL.
+
+*How the CSP was actually verified* (not by reading the header back):
+headers confirmed on `/`, a project page, `/admin/login` and `/sitemap.xml`
+against a production build; a real 1x1 PNG uploaded through `/admin/profile`
+by driving the actual file input, which exercised the `blob:` preview
+(`img-src blob:`) and the real `XMLHttpRequest` upload to Storage
+(`connect-src`) — `POST ... -> 200 OK`, zero CSP violations in the console;
+the resulting Storage URL then loaded both directly and through
+`/_next/image`. Then **52 Vitest and 66 Playwright tests (33 x Chrome and
+Edge) green under the CSP build**. The test upload was deleted afterwards.
+
+*A nine-phase-old latent bug became live.* `service_role` had **never been
+granted anything**. Phase 3 granted `anon` and `authenticated` explicitly (it
+had already learned that new tables aren't auto-granted on this stack) but
+not `service_role`, and nothing noticed because nothing ever used the
+service-role key against a content table — `tests/lib/data/published.test.ts`
+had even recorded the gap in a comment during Phase 24 as "latent rather than
+live." Phase 25's content-export script is the first thing to genuinely need
+it, and got `42501 permission denied for table profile` on its first run.
+Fixed by **`supabase/migrations/20260822120000_service_role_grants.sql`**
+(the fifth migration), which also sets `alter default privileges` so a future
+table cannot repeat it. Applied with a full `npx supabase db reset` — all
+five migrations replay cleanly from scratch — and **the local test admin
+account was destroyed and recreated as usual** (`test-admin@example.com` /
+`Test-Admin-Pass-123!`, verified afterwards: 1 row in `auth.users`, 1 in
+`private.admins`).
+
+*Backups — built and proven, not described.* New `scripts/` folder, with its
+own README explaining why it is allowed to query Supabase outside `lib/data`
+(it is operational tooling, not application code, and a backup wants raw rows
+rather than the site's cached, domain-shaped view of them):
+
+- `scripts/export-content.ts` (`npm run backup:content`) — every row of all
+  15 tables to timestamped JSON, one file per table plus `all.json` and a
+  `manifest.json` carrying the FK-safe `restoreOrder`. Uses the service-role
+  key so **drafts are included**; exits non-zero on an empty export.
+- `scripts/export-storage.ts` (`npm run backup:storage`) — every object in
+  every bucket, paths preserved verbatim. **Buckets are discovered via
+  `listBuckets()`, not hardcoded.** The recursive walk is load-bearing:
+  Storage's `list()` is directory-shaped, folders come back with `id: null`,
+  and every uploader writes to `<record-id>/<uuid>.<ext>` — so a
+  non-recursive listing would find *exactly zero files*. Exits non-zero if
+  any object fails to download.
+- `scripts/lib/backup-env.ts` — shell env wins over an env file, and
+  `--env <path>` selects the file, so backing up production never requires
+  writing its service-role key to disk. Both scripts take `--dry-run` and
+  print the host they are reading from in their first three lines.
+
+Proven by uploading two objects — one at `profile/zz-phase25/one.png`, one
+three levels deep at `projects/zz-phase25/nested/deep/two.png` — running the
+export, and **SHA-256-comparing the downloaded bytes against the source**
+(both matched; the nested path was preserved exactly). The missing-env
+failure path was exercised too. All test objects and the `backups/` output
+were deleted afterwards; **`storage.objects` is back to 0 rows and the
+database matches `seed.sql`** (one row in each of the 15 tables). `backups/`
+is git-ignored.
+
+*Documentation.* README.md, docs/deployment.md and docs/development.md were
+rewritten from scratch (the latter two were one-line stubs). architecture.md
+gained a system diagram, a data-flow section covering the three paths that
+matter (public request, admin write, file upload), and the security-headers
+section; **its "eight buckets" text was stale and now reads nine** —
+`settings` was added in Phase 21 and this file never caught up. database.md
+gained the migration list, a full RLS-policies section (including the
+GRANT-vs-RLS distinction that caused both of this project's permission bugs)
+and a migration-process section. content-management.md gained a
+screen-at-a-glance index and an owner-facing backup section. CLAUDE.md's
+folder structure now lists `scripts/`. **docs/development.md's FUTURE WORK
+section** records the four deliberate deferrals — blog, analytics, project
+filtering/search, contact form — each with why it was deferred and what
+enabling it would involve.
+
+*What Phase 25 could NOT do, and what remains manual.* Everything requiring
+Syed's own accounts. There is still **no hosted Supabase project, no Vercel
+project** (`.vercel/` does not exist and the Vercel CLI is not installed)
+**and no custom domain**; `npx supabase projects list` fails with
+`LegacyPlatformAuthRequiredError` because the CLI is not logged in. Creating
+accounts and entering credentials is not something this session can or should
+do. So goals 2, 3, 4 and 6 of the phase prompt — Vercel setup, production
+Supabase, domain/HTTPS, and the production smoke test — are **written as an
+ordered runbook in docs/deployment.md and not executed**. Anything claiming
+otherwise would be false. The order in that runbook matters: Supabase must
+exist before Vercel can have real env vars, and the domain must exist before
+`NEXT_PUBLIC_SITE_URL` can be right.
+
+Two production-only checks are called out there specifically because they
+cannot be done from here: **OG card rendering** (needs a public URL — and
+note that preview deployments cannot verify it either, since `SITE_URL` falls
+back to `localhost`, there being no Vercel-URL fallback in `lib/seo.ts`), and
+**re-verifying with the production anon key that no unpublished content is
+reachable** (goal 3's last clause — the exact `curl` for it is in the
+runbook).
+
+*One thing found in passing, not fixed.* Before the `db reset`, the local
+`projects` bucket held **10 orphaned objects** left by earlier E2E runs —
+files whose owning rows no longer exist. Deleting a project cascades its
+`project_media` rows but leaves the underlying Storage objects, and nothing
+reaps them. Harmless locally and cleared by the reset, but it is a real
+long-term behaviour worth knowing about on a production project; recorded in
+docs/deployment.md's "Routine maintenance" and docs/development.md's FUTURE
+WORK.

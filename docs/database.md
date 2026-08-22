@@ -1,17 +1,41 @@
 # Database
 
-The schema is defined entirely by the migration in
-[`supabase/migrations/20260816102304_create_content_schema.sql`](../supabase/migrations/20260816102304_create_content_schema.sql).
-This document explains what's in it. If the two ever disagree, the migration
-is correct and this file is stale — fix the file, don't trust it blindly.
+The schema is defined entirely by the files in
+[`supabase/migrations/`](../supabase/migrations). This document explains
+what's in them. If the two ever disagree, **the migrations are correct and
+this file is stale** — fix the file, don't trust it blindly.
 
 Per [CLAUDE.md](../CLAUDE.md), every schema change is a new migration file.
-Nothing here is ever hand-edited in the Supabase dashboard.
+Nothing is ever hand-edited in the Supabase dashboard.
 
-Row Level Security is enabled on every table below, added in a later,
-separate migration so this one stays untouched. See
-[docs/architecture.md's Security section](./architecture.md#security) for
-the RLS policies, storage buckets, and what "admin" means.
+**Contents**
+
+- [The migrations](#the-migrations)
+- [Conventions that apply to every table](#conventions-that-apply-to-every-table)
+- [Entities](#entities)
+- [Relationships](#relationships)
+- [Rules](#rules)
+- [RLS policies](#rls-policies)
+- [Migration process](#migration-process)
+- [Seed data](#seed-data)
+
+## The migrations
+
+Five, as of v1.0.0. They are applied in filename order and each is applied
+exactly once per project; Supabase records which have run.
+
+| File | What it adds |
+| --- | --- |
+| `20260816102304_create_content_schema.sql` | The 15 content tables, enums, the `updated_at` trigger, `slugify()`, indexes |
+| `20260816103908_rls_and_storage.sql` | RLS on every table, `is_admin()` and `private.admins`, 8 Storage buckets + `storage.objects` policies, base grants for `anon`/`authenticated` |
+| `20260818090000_resume_active_swap_function.sql` | `public.set_active_resume(uuid)` — the atomic active-resume swap |
+| `20260818091500_settings_storage_bucket.sql` | A 9th bucket, `settings`, plus all four bucket policies dropped and recreated to include it |
+| `20260822120000_service_role_grants.sql` | Table privileges for `service_role`, which had none — see [Migration process](#migration-process) |
+
+Row Level Security is enabled on every table, in the second migration rather
+than the first so the schema migration stays untouched. See
+[RLS policies](#rls-policies) below and
+[docs/architecture.md's Security section](./architecture.md#security).
 
 ## Conventions that apply to every table
 
@@ -270,6 +294,160 @@ contact_links, blog_posts, resumes — standalone
   Use `public.slugify(name)` to derive a slug from a title.
 - **Cascades**: deleting a project deletes its technologies/features/media.
   Deleting a skill category is blocked while it still has skills.
+
+## RLS policies
+
+Row Level Security is on for **every** table in `public`, with no exceptions,
+and it is the site's real access boundary — not a filter in the frontend.
+The frontend never receives a draft row to filter.
+
+### The shape, repeated everywhere
+
+For each publishable content table, two policies:
+
+```sql
+-- Anyone (signed in or not) may read rows that are published.
+create policy <table>_public_read on public.<table>
+  for select to anon, authenticated using (published);
+
+-- The admin may do anything, including to unpublished rows.
+create policy <table>_admin_all on public.<table>
+  for all to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+```
+
+`blog_posts` uses `status = 'published'` in place of the boolean.
+`profile`, `site_settings` and other non-publishable tables use the same
+admin policy with a read policy suited to the table.
+
+### `is_admin()` and `private.admins`
+
+"Admin" is a row in `private.admins` referencing an `auth.users` id — an
+allowlist table, not a JWT claim. `is_admin()` is a `security definer`
+function that checks it. The reasoning for an allowlist over a claim is in
+[docs/architecture.md](./architecture.md#what-admin-means); the short version
+is that a claim is baked into a token at sign-in and cannot be revoked until
+that token expires, whereas deleting a row takes effect on the next query.
+
+`private.admins.user_id` has `on delete cascade` from `auth.users`.
+
+### GRANT and RLS are two separate layers
+
+This trips people up, and has cost this project real time twice.
+
+A policy only takes effect once the role has the underlying SQL privilege to
+attempt the operation at all. On this stack, a newly created table is **not**
+automatically granted to `anon`/`authenticated` — by default they get
+`TRUNCATE`/`REFERENCES`/`TRIGGER`/`MAINTAIN`, not
+`SELECT`/`INSERT`/`UPDATE`/`DELETE`. So every table needs explicit `GRANT`s
+*and* policies. Missing the grant produces `42501 permission denied for
+table x`, which reads like an RLS problem and is not one.
+
+The same blind spot hid a second bug for nine phases: `service_role` was
+never granted anything, so `SUPABASE_SERVICE_ROLE_KEY` did not actually work
+against any content table despite `lib/supabase/admin.ts` documenting itself
+as bypassing RLS. Nothing noticed until Phase 25's backup script became the
+first thing to genuinely use it. Fixed in
+`20260822120000_service_role_grants.sql`, which also sets
+`alter default privileges` so a future table doesn't repeat it.
+
+Current grants:
+
+| Role | Privileges on content tables |
+| --- | --- |
+| `anon` | `select` (policies then restrict to published rows) |
+| `authenticated` | `select, insert, update, delete` (policies then require `is_admin()` for writes) |
+| `service_role` | `select, insert, update, delete` — and bypasses RLS entirely, by virtue of `BYPASSRLS` |
+
+### Storage
+
+`storage.objects` carries the same public-read/admin-write shape across all
+nine buckets, written as four policies covering every bucket rather than four
+per bucket. Full detail in
+[docs/architecture.md](./architecture.md#storage-policy-model).
+
+One quirk recorded in the migration itself: `alter table storage.objects
+enable row level security` fails with `insufficient_privilege` on a real
+Supabase project, because that table is owned by `supabase_storage_admin` and
+RLS is already on there. The statement is wrapped in an exception-swallowing
+`do` block so it still works on a bare Postgres container where it *is*
+needed.
+
+### Proving it, rather than believing it
+
+[`tests/database/rls-check.sql`](../tests/database/rls-check.sql) seeds a
+published and an unpublished row per table and asserts the whole model as
+`anon`, as an ordinary authenticated user, and as the admin. It runs inside a
+transaction that always rolls back, so it is safe against any environment
+including production:
+
+```bash
+psql "<connection-string>" -v ON_ERROR_STOP=1 -f tests/database/rls-check.sql
+```
+
+## Migration process
+
+### Writing one
+
+1. `npx supabase migration new <snake_case_name>` — creates a timestamped
+   file in `supabase/migrations/`.
+2. Write forward-only SQL. **There are no `down` migrations in this project**,
+   deliberately: a wrong `down` is more dangerous than no `down`, and
+   reversing a schema change means writing a new forward migration.
+3. A new table needs all four of: the table, `enable row level security`, its
+   policies, and its `GRANT`s. Three out of four is a bug, and which bug you
+   get depends on which one you missed.
+4. A new Storage bucket means dropping and recreating the four
+   `portfolio_buckets_*` policies with the bucket added to their lists —
+   follow `20260818091500_settings_storage_bucket.sql`.
+
+### Applying it locally
+
+```bash
+npx supabase db reset
+```
+
+This drops the database, replays every migration from scratch, and runs
+`seed.sql`. Replaying from scratch is the point — it verifies the migrations
+work on a fresh project, which is the only thing that matters when you point
+them at production.
+
+**`db reset` also wipes `auth.users` and `private.admins`**, so it destroys
+your local admin account. Budget for recreating it; see
+[docs/development.md](./development.md#getting-a-working-environment).
+
+Then regenerate the types, which are derived and never hand-written:
+
+```bash
+npx supabase gen types typescript --local > types/database.ts
+```
+
+### Applying it to production
+
+```bash
+npx supabase link --project-ref <ref>
+npx supabase db push
+```
+
+`db push` applies only migrations the remote project hasn't recorded. **Never
+run `db reset` against a linked remote project** — it will destroy that
+project's data, and it will also run `seed.sql`, inserting placeholder rows
+into your real site.
+
+Take a backup first if the migration drops or rewrites anything:
+
+```bash
+npx supabase db dump --linked -f before-<migration>.sql
+```
+
+See [docs/deployment.md](./deployment.md#backups).
+
+### Don't forget the backup script
+
+A new content table must also be added to `TABLES` in
+[`scripts/export-content.ts`](../scripts/export-content.ts), in FK-safe
+position. A table missing from that list is silently absent from every
+backup — which you discover at the worst possible moment.
 
 ## Seed data
 

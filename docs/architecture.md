@@ -1,9 +1,131 @@
 # Architecture
 
-> Rendering strategy, auth flow, and a full system diagram are still stubs —
-> to be filled in as later phases add the frontend and admin panel. This file
-> currently covers the security model (Phase 3) and the data access layer,
-> including caching (Phase 4).
+The reference for how this site is put together: what talks to what, how a
+request becomes a page, how access is controlled, how things are cached, and
+what happens when a piece of it is unavailable.
+
+**Contents**
+
+- [System diagram](#system-diagram)
+- [Data flow](#data-flow)
+- [Security](#security) — [RLS](#the-rls-model), [what "admin" means](#what-admin-means), [the three clients](#the-three-supabase-clients), [Storage](#storage-policy-model), [headers and CSP](#security-headers-and-csp)
+- [Data access layer](#data-access-layer) — [caching](#caching-strategy)
+- [Design system](#design-system)
+- [SEO & social sharing](#seo--social-sharing)
+- [Resilience](#resilience)
+
+---
+
+## System diagram
+
+```
+                          ┌──────────────────────────────────────┐
+                          │            Visitor's browser          │
+                          └──────────────────────────────────────┘
+                              │                          │
+                  public site │                          │ /admin
+                              ▼                          ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │                    Next.js on Vercel                        │
+        │                                                             │
+        │  app/(site)/*          app/admin/*         proxy.ts         │
+        │  Server Components     Server Components   (middleware,     │
+        │  + Client islands      + Server Actions     /admin/* only)  │
+        │         │                     │                  │          │
+        │         │  security headers + CSP: next.config.ts headers() │
+        │         ▼                     ▼                  ▼          │
+        │  ┌────────────────────────────────────────────────────┐     │
+        │  │                     lib/data/                      │     │
+        │  │   fetchX()  = the raw query, uncached              │     │
+        │  │   getX()    = fetchX wrapped in unstable_cache      │     │
+        │  │               + a cache tag + 1h fallback           │     │
+        │  └────────────────────────────────────────────────────┘     │
+        │         │                     │                  │          │
+        │  createStaticClient()   createServerClient()  updateSession  │
+        │  (anon, cookie-free)    (anon + user cookie)  (token refresh)│
+        └─────────────────────────────────────────────────────────────┘
+                              │                          │
+                              ▼                          ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │                          Supabase                           │
+        │                                                             │
+        │   Postgres            Auth                 Storage          │
+        │   15 content tables   auth.users           9 public buckets │
+        │   RLS on every one    private.admins       same RLS shape   │
+        │   is_admin()          (the allowlist)      on storage.objects│
+        └─────────────────────────────────────────────────────────────┘
+
+        Out of band, from a trusted terminal — never from a browser:
+        scripts/export-content.ts  ─┐
+        scripts/export-storage.ts  ─┴─ service-role key ──► Supabase
+```
+
+Three things this diagram is meant to make obvious:
+
+1. **`lib/data/` is the only thing that queries Supabase** from inside the
+   app. Every page, section and admin screen goes through it.
+2. **The public site never carries a session.** It reads with the anon key
+   through a cookie-free client, which is what makes the whole site
+   cacheable. Sessions exist only under `/admin`.
+3. **The service-role key never appears in the left-hand box.** It is used
+   only by the operational scripts, from a machine you control.
+
+---
+
+## Data flow
+
+### A public page request
+
+```
+Request  →  Vercel edge
+         →  cached ISR HTML if fresh (nothing below runs)
+         →  otherwise: Server Component renders
+              →  getX() checks unstable_cache by tag
+                   →  hit:  cached rows
+                   →  miss: fetchX() → createStaticClient() → PostgREST
+                             → RLS filters to published rows only
+              →  HTML streams to the browser, sections inside <Suspense>
+                 arriving as their data resolves
+         →  security headers attached (next.config.ts)
+```
+
+The RLS step is the important one: the frontend does not filter drafts out.
+It never receives them. A bug in a component cannot leak unpublished content,
+because the database never sent it.
+
+### An admin write
+
+```
+Admin submits a form
+  →  Client Component → Server Action
+       →  Zod schema validates (the same schema the form used)
+       →  createServerClient() — anon key + the admin's session cookie
+       →  Postgres: RLS checks is_admin() against private.admins
+       →  write succeeds or is rejected by the database
+  →  revalidateTag(CACHE_TAGS.x)
+       →  the public site's cached copy for that entity is dropped
+  →  next public request re-renders with the new content
+```
+
+Note what is *not* in that chain: the service-role key. Admin writes are
+authorised by the database against the signed-in user, not by an application
+that holds a god key and decides for itself.
+
+### A file upload
+
+```
+Admin picks a file
+  →  blob: preview renders immediately (no network)
+  →  lib/storage/upload.ts POSTs to Supabase Storage over XMLHttpRequest,
+     carrying the admin's own access token
+       (XHR rather than the client library, because it is the only way to
+        get real byte-level progress — fetch exposes none)
+       →  storage.objects RLS: authenticated AND is_admin()
+       →  bucket-level MIME allowlist and size cap
+  →  the returned public URL is stored on the content row
+  →  next/image optimizes it on the public site (the Supabase Storage path
+     is allowlisted in next.config.ts's remotePatterns)
+```
 
 ## Security
 
@@ -157,18 +279,26 @@ read outside server-side code.
 
 ### Storage policy model
 
-Eight buckets (`profile`, `projects`, `certifications`, `achievements`,
-`experience`, `education`, `resume`, `blog`), one per content area, all
-`public = true` with a `file_size_limit` and `allowed_mime_types` allowlist
-matching what that area actually stores (e.g. `resume` only accepts
+Nine buckets (`profile`, `projects`, `certifications`, `achievements`,
+`experience`, `education`, `resume`, `blog`, and `settings`), one per content
+area, all `public = true` with a `file_size_limit` and `allowed_mime_types`
+allowlist matching what that area actually stores (e.g. `resume` only accepts
 `application/pdf`; the others accept images, and `projects` additionally
 accepts video and PDF for project media/documents).
 
+The first eight came from
+`20260816103908_rls_and_storage.sql`; `settings` was added in Phase 21 by
+`20260818091500_settings_storage_bucket.sql` for the default Open Graph
+image, which **dropped and recreated all four policies** with the new bucket
+in their lists rather than adding a parallel set. That is the pattern to
+follow for any future bucket: one policy per operation covering every bucket,
+never one policy per bucket.
+
 Policies on `storage.objects` follow the exact same public-read/admin-write
-shape as the content tables, written once across all eight buckets instead
+shape as the content tables, written once across all nine buckets instead
 of repeated per bucket:
 
-- `select` — `anon`, `authenticated` — any object in one of the eight
+- `select` — `anon`, `authenticated` — any object in one of the nine
   buckets
 - `insert` / `update` / `delete` — `authenticated` **and** `is_admin()`
 
@@ -221,6 +351,87 @@ migrations, since neither bug had been applied to any real environment yet
 no drift to reconcile, just incorrect SQL to correct before it ever ran
 anywhere that mattered. After both fixes, `supabase db reset` + the same
 proof script passed cleanly against the real stack.
+
+### Security headers and CSP
+
+Defined in [`next.config.ts`](../next.config.ts)'s `headers()` and applied to
+every response on every route.
+
+| Header | Value | Why |
+| --- | --- | --- |
+| `Content-Security-Policy` | see below | Constrains where scripts, styles, images, media and network calls may come from |
+| `X-Frame-Options` | `DENY` | Clickjacking. Redundant with `frame-ancestors`, kept for older clients and header scanners |
+| `X-Content-Type-Options` | `nosniff` | Stops a browser second-guessing a declared MIME type |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Outbound links leak the origin, not the full path |
+| `Permissions-Policy` | everything denied | No camera/mic/geolocation/payment code exists; `()` rather than `(self)` means a future dependency that tries fails loudly |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | HTTPS only |
+
+Two directives are emitted **only when `NEXT_PUBLIC_SITE_URL` is `https:`** —
+`upgrade-insecure-requests` and HSTS. Both assume TLS, and
+`upgrade-insecure-requests` would rewrite every call to the plain-HTTP local
+Supabase stack and break local development entirely. Production therefore
+gets a marginally stronger policy than the one you see locally, and that is
+the only difference between them.
+
+#### Why the CSP is a static header, not a per-request nonce
+
+Next offers two shapes for a CSP: a nonce generated in `proxy.ts`, or a
+static header in `next.config.ts`. The nonce is the stronger policy and it is
+the wrong one here.
+
+Nonces must be unique per request, so Next can only inject them while
+*dynamically* rendering. Adopting one would **disable static generation and
+ISR across the entire public site** — the homepage, `/projects`, every
+project page and the sitemap are all statically generated today, revalidating
+hourly (see [Caching strategy](#caching-strategy)). That is a large, permanent
+cost in latency and hosting.
+
+What it would buy is removing `'unsafe-inline'` from `script-src`. The thing
+`'unsafe-inline'` protects against is injected inline script — and this site
+renders no visitor-influenced HTML anywhere. Every string that reaches a page
+comes from a Zod-validated admin form and is rendered as text by React, which
+escapes it. The one `dangerouslySetInnerHTML` in the codebase is
+[`components/seo/JsonLd.tsx`](../components/seo/JsonLd.tsx), which emits
+`JSON.stringify(data)` with `<` escaped into a
+`<script type="application/ld+json">` data block: not executable script, and
+not a string a visitor can influence.
+
+So the realistic XSS surface a nonce would close is empty, and the ISR it
+would cost is real. **This calculation changes if the blog ships with
+user-authored Markdown** — see
+[docs/development.md](./development.md#enabling-the-blog).
+
+`'unsafe-inline'` is required for `style-src` either way: Motion animates by
+writing to `element.style`, which CSP governs as an inline style.
+
+#### The non-obvious sources
+
+- **`img-src blob:`** — the admin uploaders preview a chosen file with
+  `URL.createObjectURL(file)` before it is uploaded.
+- **`connect-src <supabase>`** — every public read, the uploader's
+  `XMLHttpRequest`, and Auth's token refresh go to that origin directly from
+  the browser. `ws:`/`wss:` covers Realtime, which nothing subscribes to
+  today but which the client library would open if anything did.
+- **`media-src <supabase>`** — the `projects` bucket accepts `video/mp4` and
+  `video/webm`, so a media gallery item can be a video served from Storage.
+- **`https://vercel.live` in `script-src`/`frame-src`/`connect-src`** —
+  Vercel's comment toolbar, injected into **preview** deployments only. It is
+  omitted from production entirely, so the production policy allows no
+  third-party script origin at all.
+
+The Supabase origin is derived from `NEXT_PUBLIC_SUPABASE_URL` at build time,
+by the same function that builds `images.remotePatterns` — so the CSP and the
+image allowlist cannot drift apart, and moving to a different Supabase
+project without redeploying leaves a CSP that blocks it.
+
+#### Verified, not assumed
+
+The policy was checked against a real production build with the local
+Supabase stack running: all 33 Playwright tests pass in both Chrome and Edge
+under it, a real file uploads through the admin panel with no violation
+(proving `connect-src` and `img-src blob:`), and a Storage image renders both
+directly and through `/_next/image`.
+
 
 ## Data access layer
 
@@ -363,7 +574,7 @@ instead of `getX`.
 The full token set lives in [`styles/tokens.css`](../styles/tokens.css) and
 is exposed as Tailwind utilities via the `@theme inline` block in
 [`styles/globals.css`](../styles/globals.css). Every one of them is
-rendered live at [`/styleguide`](../app/styleguide/page.tsx) — that page is
+rendered live at [`/styleguide`](<../app/(site)/styleguide/page.tsx>) — that page is
 the actual source of truth for "does this token work," not this document.
 
 **The rule, per [CLAUDE.md](../CLAUDE.md):** components compose existing

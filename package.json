@@ -11,7 +11,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:edge": "playwright test --project=edge"
+    "test:e2e:edge": "playwright test --project=edge",
+    "backup:content": "tsx scripts/export-content.ts",
+    "backup:storage": "tsx scripts/export-storage.ts",
+    "backup": "npm run backup:content && npm run backup:storage"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

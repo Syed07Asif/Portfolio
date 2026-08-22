@@ -64,3 +64,10 @@ supabase/snippets
 /screenshots
 /playwright-report
 /playwright/.cache
+
+# Backup output (scripts/export-content.ts, scripts/export-storage.ts).
+# These are real copies of real content — including unpublished drafts and
+# every uploaded file — and belong in private storage off this machine, not
+# in the repository. See docs/deployment.md's Backups section for where they
+# should actually go.
+/backups

@@ -50,6 +50,9 @@ styles/         global CSS and design tokens (globals.css's @theme inline IS the
 supabase/
   migrations/   one SQL file per schema change
   seed.sql      SQL seed data for local development (Supabase CLI's default path, not a seed/ subfolder)
+scripts/        operational scripts run from a terminal, NOT application code
+                (backup/export). The one place allowed to query Supabase
+                outside lib/data — see scripts/README.md for why.
 docs/           progress (start here), architecture, database, deployment, content-management, development
 tests/          test files, mirroring the structure under test
 ```
@@ -68,7 +71,7 @@ Each of these folders has its own README with more detail — read it before add
 1. **Content is never hard-coded.** Project names, job history, skills, certifications, copy for portfolio sections — all of it lives in Supabase and is fetched through `lib/data`. Components render whatever they're given as props.
 2. **Secrets never reach client components.** `SUPABASE_SERVICE_ROLE_KEY` and any other server-only secret must only be read in server-side code (Server Components, Route Handlers, Server Actions) — never imported into a file marked `"use client"`, never sent to the browser.
 3. **All schema changes go through a migration file** in `supabase/migrations`. No hand-editing the schema in the Supabase dashboard and leaving it undocumented — the migration files are the source of truth for the database shape.
-4. **No arbitrary values in components.** Colors, spacing, radii, shadows, durations, and easings are all design tokens defined in `styles/tokens.css` and exposed as Tailwind utilities (`bg-surface`, `text-h2`, `rounded-lg`, `shadow-glow-accent-md`, `ease-out-expo`, ...) — see [docs/architecture.md](../docs/architecture.md)'s Design System section for the full list. Don't write `bg-[#1a1f38]`, `p-[18px]`, `rounded-[14px]`, or similar hardcoded/arbitrary Tailwind values in a component; if a token doesn't exist for what's needed, add it to `styles/tokens.css` rather than reaching for a one-off literal. The only exception is `[value:var(--token-name)]` arbitrary-property syntax when referencing an existing token has no matching utility class — that's still 100% token-driven, just spelled differently.
+4. **No arbitrary values in components.** Colors, spacing, radii, shadows, durations, and easings are all design tokens defined in `styles/tokens.css` and exposed as Tailwind utilities (`bg-surface`, `text-h2`, `rounded-lg`, `shadow-glow-accent-md`, `ease-out-expo`, ...) — see [docs/architecture.md](docs/architecture.md)'s Design System section for the full list. Don't write `bg-[#1a1f38]`, `p-[18px]`, `rounded-[14px]`, or similar hardcoded/arbitrary Tailwind values in a component; if a token doesn't exist for what's needed, add it to `styles/tokens.css` rather than reaching for a one-off literal. The only exception is `[value:var(--token-name)]` arbitrary-property syntax when referencing an existing token has no matching utility class — that's still 100% token-driven, just spelled differently.
 5. **Don't scaffold ahead of the current phase.** This is a multi-phase build — implement what's asked for in the current phase, not speculative future features.
 
 <!-- BEGIN:nextjs-agent-rules -->
