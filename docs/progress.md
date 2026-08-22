@@ -3156,11 +3156,15 @@ back to `localhost`, there being no Vercel-URL fallback in `lib/seo.ts`), and
 reachable** (goal 3's last clause — the exact `curl` for it is in the
 runbook).
 
-*One thing found in passing, not fixed.* Before the `db reset`, the local
-`projects` bucket held **10 orphaned objects** left by earlier E2E runs —
-files whose owning rows no longer exist. Deleting a project cascades its
+*One thing found in passing, not fixed.* **Deleting a project cascades its
 `project_media` rows but leaves the underlying Storage objects, and nothing
-reaps them. Harmless locally and cleared by the reset, but it is a real
-long-term behaviour worth knowing about on a production project; recorded in
-docs/deployment.md's "Routine maintenance" and docs/development.md's FUTURE
-WORK.
+reaps them.** Two separate observations pinned this down: before the `db
+reset`, the local `projects` bucket held 10 orphaned objects from earlier
+runs; and after the final green E2E run it held exactly 2 more — one per
+browser project, because `tests/e2e/owner-journey.spec.ts` uploads a real
+file and its `afterAll` deletes the row but not the object. So **every full
+`npm run test:e2e` leaks 2 Storage objects locally**, and the same mechanism
+applies to a real deletion in production. Cleaned up by hand here
+(`storage.objects` is back to 0), and recorded in docs/deployment.md's
+"Routine maintenance" and docs/development.md's FUTURE WORK. Not fixed
+because the fix belongs in the uploader/delete path, not in a launch phase.
