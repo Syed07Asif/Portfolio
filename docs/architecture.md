@@ -1,5 +1,932 @@
 # Architecture
 
-> Stub — to be filled in as the build progresses through phases.
+The reference for how this site is put together: what talks to what, how a
+request becomes a page, how access is controlled, how things are cached, and
+what happens when a piece of it is unavailable.
 
-Planned contents: high-level system diagram (Next.js App Router ↔ Supabase), rendering strategy (server components vs client components), auth flow for `/admin`, and how content flows from the database to the rendered page.
+**Contents**
+
+- [System diagram](#system-diagram)
+- [Data flow](#data-flow)
+- [Security](#security) — [RLS](#the-rls-model), [what "admin" means](#what-admin-means), [the three clients](#the-three-supabase-clients), [Storage](#storage-policy-model), [headers and CSP](#security-headers-and-csp)
+- [Data access layer](#data-access-layer) — [caching](#caching-strategy)
+- [Design system](#design-system)
+- [SEO & social sharing](#seo--social-sharing)
+- [Resilience](#resilience)
+
+---
+
+## System diagram
+
+```
+                          ┌──────────────────────────────────────┐
+                          │            Visitor's browser          │
+                          └──────────────────────────────────────┘
+                              │                          │
+                  public site │                          │ /admin
+                              ▼                          ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │                    Next.js on Vercel                        │
+        │                                                             │
+        │  app/(site)/*          app/admin/*         proxy.ts         │
+        │  Server Components     Server Components   (middleware,     │
+        │  + Client islands      + Server Actions     /admin/* only)  │
+        │         │                     │                  │          │
+        │         │  security headers + CSP: next.config.ts headers() │
+        │         ▼                     ▼                  ▼          │
+        │  ┌────────────────────────────────────────────────────┐     │
+        │  │                     lib/data/                      │     │
+        │  │   fetchX()  = the raw query, uncached              │     │
+        │  │   getX()    = fetchX wrapped in unstable_cache      │     │
+        │  │               + a cache tag + 1h fallback           │     │
+        │  └────────────────────────────────────────────────────┘     │
+        │         │                     │                  │          │
+        │  createStaticClient()   createServerClient()  updateSession  │
+        │  (anon, cookie-free)    (anon + user cookie)  (token refresh)│
+        └─────────────────────────────────────────────────────────────┘
+                              │                          │
+                              ▼                          ▼
+        ┌─────────────────────────────────────────────────────────────┐
+        │                          Supabase                           │
+        │                                                             │
+        │   Postgres            Auth                 Storage          │
+        │   15 content tables   auth.users           9 public buckets │
+        │   RLS on every one    private.admins       same RLS shape   │
+        │   is_admin()          (the allowlist)      on storage.objects│
+        └─────────────────────────────────────────────────────────────┘
+
+        Out of band, from a trusted terminal — never from a browser:
+        scripts/export-content.ts  ─┐
+        scripts/export-storage.ts  ─┴─ service-role key ──► Supabase
+```
+
+Three things this diagram is meant to make obvious:
+
+1. **`lib/data/` is the only thing that queries Supabase** from inside the
+   app. Every page, section and admin screen goes through it.
+2. **The public site never carries a session.** It reads with the anon key
+   through a cookie-free client, which is what makes the whole site
+   cacheable. Sessions exist only under `/admin`.
+3. **The service-role key never appears in the left-hand box.** It is used
+   only by the operational scripts, from a machine you control.
+
+---
+
+## Data flow
+
+### A public page request
+
+```
+Request  →  Vercel edge
+         →  cached ISR HTML if fresh (nothing below runs)
+         →  otherwise: Server Component renders
+              →  getX() checks unstable_cache by tag
+                   →  hit:  cached rows
+                   →  miss: fetchX() → createStaticClient() → PostgREST
+                             → RLS filters to published rows only
+              →  HTML streams to the browser, sections inside <Suspense>
+                 arriving as their data resolves
+         →  security headers attached (next.config.ts)
+```
+
+The RLS step is the important one: the frontend does not filter drafts out.
+It never receives them. A bug in a component cannot leak unpublished content,
+because the database never sent it.
+
+### An admin write
+
+```
+Admin submits a form
+  →  Client Component → Server Action
+       →  Zod schema validates (the same schema the form used)
+       →  createServerClient() — anon key + the admin's session cookie
+       →  Postgres: RLS checks is_admin() against private.admins
+       →  write succeeds or is rejected by the database
+  →  revalidateTag(CACHE_TAGS.x)
+       →  the public site's cached copy for that entity is dropped
+  →  next public request re-renders with the new content
+```
+
+Note what is *not* in that chain: the service-role key. Admin writes are
+authorised by the database against the signed-in user, not by an application
+that holds a god key and decides for itself.
+
+### A file upload
+
+```
+Admin picks a file
+  →  blob: preview renders immediately (no network)
+  →  lib/storage/upload.ts POSTs to Supabase Storage over XMLHttpRequest,
+     carrying the admin's own access token
+       (XHR rather than the client library, because it is the only way to
+        get real byte-level progress — fetch exposes none)
+       →  storage.objects RLS: authenticated AND is_admin()
+       →  bucket-level MIME allowlist and size cap
+  →  the returned public URL is stored on the content row
+  →  next/image optimizes it on the public site (the Supabase Storage path
+     is allowlisted in next.config.ts's remotePatterns)
+```
+
+## Security
+
+Everything below is implemented in
+[`supabase/migrations/20260816103908_rls_and_storage.sql`](../supabase/migrations/20260816103908_rls_and_storage.sql).
+Proven correct — not just written — by
+[`tests/database/rls-check.sql`](../tests/database/rls-check.sql); see
+[Proving it works](#proving-it-works).
+
+### The RLS model
+
+Row Level Security is enabled on every table from Phase 2, with no
+exceptions. The pattern is the same everywhere:
+
+- A `select`-only policy lets `anon` and `authenticated` read public rows —
+  `published = true` (or `status = 'published'` for `blog_posts`, `is_active
+  = true` for `resumes`).
+- A `for all` policy lets the admin do all four operations, gated by
+  `is_admin()` (see below).
+- `anon` has no insert/update/delete policy on anything, anywhere. With RLS
+  enabled, no matching policy means the operation is denied regardless of
+  the base `GRANT`s below — RLS is what actually decides "which rows,"
+  `GRANT` only decides "this role may attempt this kind of statement at
+  all."
+
+**The base `GRANT`s matter too, and aren't automatic.** New tables in this
+project are *not* granted to `anon`/`authenticated` by the platform — verified
+against a real local Supabase stack, where a freshly created table came back
+with `TRUNCATE`/`REFERENCES`/`TRIGGER`/`MAINTAIN` for those roles but no
+`SELECT`/`INSERT`/`UPDATE`/`DELETE`. Without an explicit `GRANT`, even a
+row a policy would otherwise allow is unreachable ("permission denied for
+table x", not an RLS-shaped empty result). The migration grants `SELECT` to
+`anon`/`authenticated` and `INSERT`/`UPDATE`/`DELETE` to `authenticated` on
+every Phase 2 table, plus an `ALTER DEFAULT PRIVILEGES` so a table added in
+a later migration doesn't quietly repeat this.
+
+Two exceptions to the plain "published rows only" rule:
+
+- **Child tables** (`project_technologies`, `project_features`,
+  `project_media`) have no `published` column of their own — a project's
+  media shouldn't need a separate publish toggle. Their read policy uses an
+  `EXISTS` subquery against `projects.published` instead, so a technology row
+  is only visible when its parent project is:
+
+  ```sql
+  using (
+    exists (
+      select 1 from public.projects p
+      where p.id = project_technologies.project_id and p.published = true
+    )
+  )
+  ```
+
+  This lives in the policy, not in application code — any query against
+  these tables, from any caller, gets this rule for free.
+
+- **`site_settings`** has no public `select` policy on the base table at
+  all — direct queries return zero rows for anyone but the admin. RLS is
+  row-level, so it can't redact individual columns (`id`, `is_singleton`,
+  `created_at`, `updated_at` are internal bookkeeping that shouldn't be
+  public). Instead, a view — `public.public_site_settings` — selects only
+  the safe columns (`site_title`, `meta_description`, `og_image_url`,
+  `primary_nav`, `feature_flags`, `analytics_enabled`) and is granted to
+  `anon`/`authenticated` directly. The view works without an `anon` policy
+  on the base table because Postgres exempts a table's *owner* from its own
+  RLS by default, and the view runs with its owner's privileges — the
+  migration role owns both. The public-facing frontend should always query
+  `public_site_settings`, never `site_settings` directly.
+
+`profile` and `skill_categories` have no `published` column either, but for
+the opposite reason: they're not draft-able. `profile` is a single always-on
+row, and a category is just a grouping — only the skills inside it carry a
+draft state. Both get an unconditional `using (true)` read policy.
+
+### What "admin" means
+
+There is exactly one admin: Syed Asif. That's implemented as an **allowlist
+table**, not a custom JWT claim:
+
+```sql
+create table private.admins (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+```
+
+`private` is a schema PostgREST never exposes — only schemas listed in the
+project's API settings are reachable over the API, and `private` isn't one
+of them — so this table can't be queried through the API regardless of RLS.
+RLS is enabled on it anyway, with **zero policies**, so even a direct
+Postgres connection as `authenticated` sees nothing. It's only ever touched
+from the SQL editor or a migration; see
+[docs/deployment.md](./deployment.md#admin-account) for how a row gets added.
+
+```sql
+create or replace function public.is_admin()
+returns boolean
+language sql stable security definer
+set search_path = public, private, auth
+as $$
+  select exists (select 1 from private.admins where user_id = auth.uid());
+$$;
+```
+
+**Why an allowlist table instead of a custom claim:** a custom JWT claim
+(e.g. `app_metadata.role = 'admin'`) would work too, but it means the
+"who's admin" answer lives partly in Supabase Auth's user metadata and
+partly wherever that metadata gets set (dashboard, Admin API call, a
+one-off script) — there's no single place to look, and no history. An
+allowlist table is one row in one place, auditable with a normal `SELECT`
+from the SQL editor (as the table owner), and trivial to reason about with
+exactly one admin: either the row exists or it doesn't. It also composes
+better with future changes — moving to multiple admins later is adding
+rows, not redesigning the auth flow. The tradeoff is an extra table lookup
+per policy check, which is irrelevant at this scale.
+
+`is_admin()` is `security definer` so it can read `private.admins` despite
+the caller having no grant on that schema — it runs with the function
+owner's privileges, not the caller's, while `auth.uid()` inside it still
+reflects whoever is actually calling. That's what makes it safe to expose:
+it only ever answers "is *this* caller an admin," never anyone else's.
+
+### The three Supabase clients
+
+All three live in [`lib/supabase/`](../lib/README.md) — see that folder's
+README for the one-line version. When to use which:
+
+| Client | Key | Use it for | Subject to RLS? |
+| --- | --- | --- | --- |
+| `client.ts` | anon | Client Components | Yes |
+| `server.ts` — `createClient()` | anon + cookie session | Server Components, Server Actions, Route Handlers acting as the current user | Yes |
+| `server.ts` — `createStaticClient()` | anon, no cookies | `lib/data`'s public read functions (see [Caching strategy](#caching-strategy) — cookies can't be used inside `unstable_cache`) | Yes |
+| `admin.ts` | service-role | Trusted server-side operations that must bypass RLS | **No** |
+
+`createClient()` should cover almost everything else server-side — the
+current user's session (anonymous visitor or the signed-in admin) flows
+through cookies, and RLS enforces the same rules it would over the API.
+`admin.ts` exists for the small set of operations where that's not enough
+(e.g. an admin action gated by application logic rather than a row the
+current user's session can already see). Default to `createClient()`; reach
+for `admin.ts` deliberately, not by habit.
+
+**Why the service-role key never reaches the browser:** it bypasses RLS
+entirely — anyone holding it can read or write any row in any table,
+published or not, admin-only or not. `admin.ts` starts with `import
+"server-only"`, a Next.js marker package that turns any accidental import of
+that file from a Client Component into a **build failure**, not a runtime
+leak. It's also never exposed through a `NEXT_PUBLIC_*` env var (see
+[.env.example](../.env.example)) and per [CLAUDE.md](../CLAUDE.md) is never
+read outside server-side code.
+
+### Storage policy model
+
+Nine buckets (`profile`, `projects`, `certifications`, `achievements`,
+`experience`, `education`, `resume`, `blog`, and `settings`), one per content
+area, all `public = true` with a `file_size_limit` and `allowed_mime_types`
+allowlist matching what that area actually stores (e.g. `resume` only accepts
+`application/pdf`; the others accept images, and `projects` additionally
+accepts video and PDF for project media/documents).
+
+The first eight came from
+`20260816103908_rls_and_storage.sql`; `settings` was added in Phase 21 by
+`20260818091500_settings_storage_bucket.sql` for the default Open Graph
+image, which **dropped and recreated all four policies** with the new bucket
+in their lists rather than adding a parallel set. That is the pattern to
+follow for any future bucket: one policy per operation covering every bucket,
+never one policy per bucket.
+
+Policies on `storage.objects` follow the exact same public-read/admin-write
+shape as the content tables, written once across all nine buckets instead
+of repeated per bucket:
+
+- `select` — `anon`, `authenticated` — any object in one of the nine
+  buckets
+- `insert` / `update` / `delete` — `authenticated` **and** `is_admin()`
+
+`public = true` on the bucket makes the plain public object URL work without
+going through RLS at all (that's how Supabase serves public buckets); the
+`storage.objects` policies above additionally cover access through the
+Supabase client/API (`.list()`, `.download()`, etc.), so the same rule holds
+no matter how an object is reached.
+
+### Proving it works
+
+[`tests/database/rls-check.sql`](../tests/database/rls-check.sql) is a
+self-contained script that seeds one published + one unpublished row per
+table, then asserts — as `anon` — that only the published ones are visible,
+that a child row's visibility follows its parent project, that `anon` can't
+`INSERT`/`UPDATE`/`DELETE` anywhere, that the `is_admin()` bypass actually
+works for the admin and *doesn't* for an ordinary authenticated user, and
+that the storage read/write split holds too. Everything runs inside a
+transaction that always rolls back, so it's safe to run against any
+environment, including production:
+
+```bash
+psql "<connection-string>" -v ON_ERROR_STOP=1 -f tests/database/rls-check.sql
+```
+
+It was first run against a disposable Postgres container (with `auth`/`storage`
+schemas and `anon`/`authenticated` roles reconstructed by hand to match a
+real Supabase project) while writing this migration, and every assertion
+passed — but that hand-built harness turned out to be more permissive than
+reality: it granted `anon`/`authenticated` broad table privileges
+up front, matching an assumption about Supabase's default behavior that
+turned out to be wrong (see [Base privilege
+grants](#the-rls-model)). Re-run in Phase 4 against a genuine local Supabase
+stack (`supabase start`), it surfaced two real bugs the hand-built harness
+had been masking:
+
+1. `alter table storage.objects enable row level security` fails on real
+   Supabase with "must be owner of table objects" — that table is owned by
+   `supabase_storage_admin`, not the migration role. Fixed by wrapping it in
+   a `do` block that catches `insufficient_privilege` and no-ops (it only
+   needs to actually run on a bare local Postgres instance that doesn't
+   already have RLS on).
+2. New tables are *not* automatically granted to `anon`/`authenticated` —
+   fixed by adding the explicit `GRANT`s described above.
+
+Both were fixed directly in this migration file rather than as follow-up
+migrations, since neither bug had been applied to any real environment yet
+(no live Supabase project existed at the time) — see
+[CLAUDE.md](../CLAUDE.md) on migrations being the source of truth; there was
+no drift to reconcile, just incorrect SQL to correct before it ever ran
+anywhere that mattered. After both fixes, `supabase db reset` + the same
+proof script passed cleanly against the real stack.
+
+### Security headers and CSP
+
+Defined in [`next.config.ts`](../next.config.ts)'s `headers()` and applied to
+every response on every route.
+
+| Header | Value | Why |
+| --- | --- | --- |
+| `Content-Security-Policy` | see below | Constrains where scripts, styles, images, media and network calls may come from |
+| `X-Frame-Options` | `DENY` | Clickjacking. Redundant with `frame-ancestors`, kept for older clients and header scanners |
+| `X-Content-Type-Options` | `nosniff` | Stops a browser second-guessing a declared MIME type |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Outbound links leak the origin, not the full path |
+| `Permissions-Policy` | everything denied | No camera/mic/geolocation/payment code exists; `()` rather than `(self)` means a future dependency that tries fails loudly |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | HTTPS only |
+
+Two directives are emitted **only when `NEXT_PUBLIC_SITE_URL` is `https:`** —
+`upgrade-insecure-requests` and HSTS. Both assume TLS, and
+`upgrade-insecure-requests` would rewrite every call to the plain-HTTP local
+Supabase stack and break local development entirely. Production therefore
+gets a marginally stronger policy than the one you see locally, and that is
+the only difference between them.
+
+#### Why the CSP is a static header, not a per-request nonce
+
+Next offers two shapes for a CSP: a nonce generated in `proxy.ts`, or a
+static header in `next.config.ts`. The nonce is the stronger policy and it is
+the wrong one here.
+
+Nonces must be unique per request, so Next can only inject them while
+*dynamically* rendering. Adopting one would **disable static generation and
+ISR across the entire public site** — the homepage, `/projects`, every
+project page and the sitemap are all statically generated today, revalidating
+hourly (see [Caching strategy](#caching-strategy)). That is a large, permanent
+cost in latency and hosting.
+
+What it would buy is removing `'unsafe-inline'` from `script-src`. The thing
+`'unsafe-inline'` protects against is injected inline script — and this site
+renders no visitor-influenced HTML anywhere. Every string that reaches a page
+comes from a Zod-validated admin form and is rendered as text by React, which
+escapes it. The one `dangerouslySetInnerHTML` in the codebase is
+[`components/seo/JsonLd.tsx`](../components/seo/JsonLd.tsx), which emits
+`JSON.stringify(data)` with `<` escaped into a
+`<script type="application/ld+json">` data block: not executable script, and
+not a string a visitor can influence.
+
+So the realistic XSS surface a nonce would close is empty, and the ISR it
+would cost is real. **This calculation changes if the blog ships with
+user-authored Markdown** — see
+[docs/development.md](./development.md#enabling-the-blog).
+
+`'unsafe-inline'` is required for `style-src` either way: Motion animates by
+writing to `element.style`, which CSP governs as an inline style.
+
+#### The non-obvious sources
+
+- **`img-src blob:`** — the admin uploaders preview a chosen file with
+  `URL.createObjectURL(file)` before it is uploaded.
+- **`connect-src <supabase>`** — every public read, the uploader's
+  `XMLHttpRequest`, and Auth's token refresh go to that origin directly from
+  the browser. `ws:`/`wss:` covers Realtime, which nothing subscribes to
+  today but which the client library would open if anything did.
+- **`media-src <supabase>`** — the `projects` bucket accepts `video/mp4` and
+  `video/webm`, so a media gallery item can be a video served from Storage.
+- **`https://vercel.live` in `script-src`/`frame-src`/`connect-src`** —
+  Vercel's comment toolbar, injected into **preview** deployments only. It is
+  omitted from production entirely, so the production policy allows no
+  third-party script origin at all.
+
+The Supabase origin is derived from `NEXT_PUBLIC_SUPABASE_URL` at build time,
+by the same function that builds `images.remotePatterns` — so the CSP and the
+image allowlist cannot drift apart, and moving to a different Supabase
+project without redeploying leaves a CSP that blocks it.
+
+#### Verified, not assumed
+
+The policy was checked against a real production build with the local
+Supabase stack running: all 33 Playwright tests pass in both Chrome and Edge
+under it, a real file uploads through the admin panel with no violation
+(proving `connect-src` and `img-src blob:`), and a Storage image renders both
+directly and through `/_next/image`.
+
+
+## Data access layer
+
+Three layers, each with one job:
+
+1. **`types/database.ts`** — generated by the Supabase CLI from the schema.
+   Exact, exhaustive, never hand-edited, never imported outside `types/`.
+2. **`types/content.ts`** — hand-authored domain types (`Project`,
+   `ProjectDetail`, `SkillWithCategory`, ...) derived from `database.ts` via
+   `Pick`, matching exactly what each `lib/data` function selects. Every
+   component and `lib/data` module imports from here.
+3. **`lib/validation/`** — one Zod schema per entity, matching `content.ts`'s
+   shapes. The single source of truth for both admin form validation and
+   server-side validation once the admin panel exists — a schema is
+   defined once and used on both sides of that boundary.
+
+`lib/data/` sits on top of all three: one module per entity, each exporting
+plain async functions that use `createStaticClient()`, select only the
+columns `content.ts` promises, filter to published content, order by
+`display_order` then a sensible tiebreaker (e.g. most recent `start_date`
+first), and return a typed result. A failed query is caught, logged
+server-side via `console.error`, and turned into `null`/`[]` rather than
+thrown — a public page should render with a section missing, never crash,
+if Supabase is briefly unreachable.
+
+`getProjectBySlug()` fetches the project plus its technologies, features,
+and media in a single PostgREST request using embedded resources
+(`project_technologies(...)`, `project_features(...)`, `project_media(...)`
+inside one `.select()`) — one SQL query with joins server-side, not four
+round trips.
+
+Each module exports two functions: `fetchX` (the raw query) and `getX`
+(`fetchX` wrapped in `unstable_cache` — see [Caching
+strategy](#caching-strategy)). Components and pages only ever call `getX`;
+`fetchX` is exported solely so [`tests/lib/data/smoke.ts`](#proving-the-data-layer-works)
+can exercise the real query logic outside a full Next.js server runtime,
+which `unstable_cache` requires and a standalone script isn't.
+
+### Caching strategy
+
+Every `lib/data` function is wrapped in `unstable_cache` (`next/cache`) with
+two things attached:
+
+- **`revalidate: 3600`** — a one-hour time-based fallback. This is a
+  portfolio site; content changes rarely, so staleness up to an hour is a
+  non-issue on its own.
+- **A tag from `CACHE_TAGS`** (`lib/constants.ts`) — one tag per entity
+  (`"projects"`, `"skills"`, ...), so a change to one entity never
+  invalidates unrelated cached data.
+
+`unstable_cache` (not route-level `fetch` caching) is the right tool here
+because the data source is the Supabase client, not a raw `fetch` call the
+Next.js cache can intercept on its own — `unstable_cache` caches whatever
+the wrapped function returns, regardless of how it got there. It does
+forbid dynamic APIs like `cookies()` inside the wrapped function, which is
+exactly why `lib/data` uses `createStaticClient()` (no cookies) rather than
+`server.ts`'s cookie-aware `createClient()` — public reads don't need
+session awareness anyway, since they only ever return published content no
+matter who's asking.
+
+**How the admin panel invalidates this (future phase):** every write the
+admin panel makes is a publish/unpublish/edit of some entity. After that
+write succeeds, the server action calls `revalidateTag(CACHE_TAGS.<entity>)`
+for the entity that changed, which immediately invalidates every cache
+entry tagged with it — the next request to any `lib/data` function for that
+entity re-queries Supabase instead of serving the stale hour-old result. The
+one-hour `revalidate` is purely a safety net for content that changed
+through some path that forgot to call `revalidateTag` (there shouldn't be
+one, but the fallback costs nothing); tag-based invalidation is what makes a
+publish feel instant.
+
+### Per-route revalidation: `/projects/[slug]`
+
+The caching strategy above covers `lib/data` — a cache of *query results*.
+A statically-generated dynamic route has a second, separate cache layer on
+top of that: Next's Full Route Cache, which stores the *rendered page*
+itself. `app/projects/[slug]/page.tsx` is the first route in this project
+where that second layer actually matters, so it's worth spelling out how
+the two interact to satisfy "a newly published project goes live at its
+own URL with no redeploy":
+
+1. **`generateStaticParams()` (calling `getProjectSlugs()`) pre-renders
+   every currently-published project at build time.** Fast, fully static
+   HTML for anything that existed at the last build.
+2. **`dynamicParams` is left at its Next.js default (`true`) — not
+   exported/overridden anywhere in the route.** This is the load-bearing
+   part: a slug that *doesn't* appear in `generateStaticParams()`'s list
+   (a project published after the last build) isn't a 404. Next falls
+   through to rendering the page on demand for that request, calling the
+   exact same `getProjectBySlug()` — which either returns the new project
+   (page renders normally and gets cached from then on) or `null`
+   (`notFound()` fires, exactly as it would for a typo'd slug). A brand
+   new project is live the moment it's published and requested once — no
+   build, no redeploy.
+3. **`export const revalidate = 3600` on the page puts the *pre-rendered*
+   pages into ISR** — without it, statically generated pages are cached
+   indefinitely (until the next build), so an *edit* to an
+   already-published project (new description, swapped screenshot, ...)
+   would never appear on its already-generated page no matter how long you
+   waited. `3600` matches `lib/data`'s own `revalidate` so both layers go
+   stale on the same schedule rather than one masking the other.
+4. **Once the admin panel exists**, its publish/edit action calling
+   `revalidateTag(CACHE_TAGS.projects)` (see above) invalidates the data
+   layer immediately; pairing that with Next's `revalidatePath("/projects/
+   [slug]")` (or tag-based route revalidation, if the admin action already
+   knows the specific slug) would make step 3's up-to-an-hour wait instant
+   too, the same way it already does for the data cache. That pairing
+   isn't wired up yet — there's no admin write path to call it from — but
+   the route is already structured so adding it later is a one-line change
+   in that future server action, not a change to this page.
+
+### Proving the data layer works
+
+[`tests/lib/data/smoke.ts`](../tests/lib/data/smoke.ts) calls every
+`fetchX` function and prints what came back — shape, and a preview of the
+actual value — so a broken query, a wrong column name, or an empty result is
+obvious before any page exists to notice it. Run it with:
+
+```bash
+npx supabase start
+npx supabase status -o env   # copy API_URL → NEXT_PUBLIC_SUPABASE_URL, anon key → NEXT_PUBLIC_SUPABASE_ANON_KEY
+npm run smoke:data
+```
+
+Run against a real local Supabase stack (`supabase start`, not a bare
+Postgres container — this needs actual PostgREST, since the data layer
+talks to Supabase over its REST API, not a Postgres wire connection) with
+migrations and `supabase/seed.sql` applied, every function returned real
+seeded data with the expected shape and nothing threw. Getting there
+surfaced the same two migration bugs documented in [Proving it
+works](#proving-it-works) — `fetchProfile()` and the rest came back
+`permission denied for table x` until the missing `GRANT`s were added — plus
+one testability gap: `unstable_cache` (used by every `getX`) throws
+`Invariant: incrementalCache missing` outside a full Next.js server runtime,
+which is exactly why this script calls the unwrapped `fetchX` functions
+instead of `getX`.
+
+## Design system
+
+The full token set lives in [`styles/tokens.css`](../styles/tokens.css) and
+is exposed as Tailwind utilities via the `@theme inline` block in
+[`styles/globals.css`](../styles/globals.css). Every one of them is
+rendered live at [`/styleguide`](<../app/(site)/styleguide/page.tsx>) — that page is
+the actual source of truth for "does this token work," not this document.
+
+**The rule, per [CLAUDE.md](../CLAUDE.md):** components compose existing
+tokens (`bg-surface`, `text-h2`, `rounded-lg`, `shadow-glow-accent-md`,
+`ease-out-expo`, ...) and never write an arbitrary value. If a component
+needs a colour, size, or timing that doesn't exist yet, the fix is a new
+token in `tokens.css`, not a one-off literal in the component.
+
+### Why CSS tokens, not `tailwind.config.ts`
+
+The brief asked to "extend `tailwind.config.ts`," but this project is on
+Tailwind v4, which is CSS-first: the `@theme` block *is* the config. A
+`tailwind.config.ts` still works in v4 (loaded via an `@config` directive)
+but exists for things CSS can't express — custom plugins, a `content`
+safelist, JS-computed values — none of which this project needs; v4 also
+auto-detects template files without a `content` array. Adding an empty
+config file just to have one would be dead weight a reader has to figure
+out does nothing, which is worse than not having it. `styles/tokens.css` +
+`styles/globals.css`'s `@theme inline` block together are the Tailwind
+config, and every token was verified end-to-end (computed `font-size`,
+`line-height`, `letter-spacing`, `border-radius`, `box-shadow`, and
+`background-color` all matched their source token exactly) against the
+running dev server while building this phase.
+
+### Token categories
+
+| Category | Tokens | Tailwind utilities |
+| --- | --- | --- |
+| Surfaces | `--color-background/surface/surface-raised/overlay/border/border-strong` | `bg-background`, `bg-surface`, `border-border`, ... |
+| Foreground | `--color-foreground/-secondary/-muted` | `text-foreground`, `text-foreground-secondary`, `text-foreground-muted` |
+| Accent | `--color-accent/-hover/-muted/-foreground` | `bg-accent`, `text-accent`, `bg-accent-hover`, ... |
+| Decorative glow | `--color-glow-cyan/-warm` | `bg-glow-cyan`, `shadow-glow-cyan`, ... |
+| Semantic | `--color-success/warning/danger/info` | `bg-success`, `text-danger`, ... |
+| Typography | `--text-display/h1-h4/body-lg/body/small/caption` (size + line-height + letter-spacing, paired) | `text-display`, `text-h2`, `text-caption`, ... |
+| Font families | `--font-display` (Sora), `--font-body` (Inter) | `font-display`, `font-body` |
+| Radius | `--radius-sm/md/lg/xl/2xl/full` | `rounded-sm` … `rounded-full` |
+| Shadow / glow | `--shadow-sm/md/lg`, `--glow-accent-sm/md/lg`, `--glow-cyan/-warm` | `shadow-sm`, `shadow-glow-accent-md`, ... |
+| Easing | `--ease-out-expo/-out-quart/-in-out-quart/-spring` | `ease-out-expo`, ... (CSS transitions) |
+| Durations | `--duration-instant/fast/base/slow/slower` | not mapped to a Tailwind namespace — see below |
+| Spacing rhythm | `--space-section-y/-y-lg/-container-x` | referenced directly (`style`/arbitrary-property), no dedicated utility |
+| Border width | `--border-width-thin/medium/thick` | `border` (1px) / `border-[length:var(--border-width-medium)]` / `border-2` (2px) |
+
+**Why durations aren't a Tailwind namespace:** Tailwind's `duration-*`
+utilities are a fixed numeric scale (`duration-150`, `duration-300`, ...),
+not a `--duration-*` theme namespace the way `--radius-*`/`--shadow-*` are —
+there's nothing to remap. It doesn't matter in practice: almost all
+animation in this project runs through Framer Motion (`lib/motion.ts`), not
+CSS `transition-duration` utilities, and Framer Motion needs numeric
+seconds in JS anyway (see below).
+
+### Fonts
+
+Loaded via `next/font/google` in `app/layout.tsx`: **Sora** (`--font-sora`,
+mapped to the `--font-display` token) for headings — geometric, heavy at
+high weights, matching the reference's bold uppercase display type — and
+**Inter** (`--font-inter`, mapped to `--font-body`) for body copy. Both use
+the `latin` subset and `display: "swap"` so text renders in a fallback font
+immediately rather than staying invisible while the webfont loads.
+
+### Motion
+
+[`lib/motion.ts`](../lib/motion.ts) exports every reusable variant:
+`fadeInUp`, `fadeIn`, `scaleIn`, `staggerContainer`/`staggerItem`,
+`revealOnScroll`, `hoverLift`/`hoverGlow`, `pageTransition`. Sections import
+these rather than writing their own `transition`/`variants` objects, so the
+whole site shares one motion vocabulary.
+
+Durations and easing curves are re-declared in that file as plain JS
+constants (seconds, and bezier arrays) rather than read from
+`tokens.css`'s custom properties — Framer Motion variants are evaluated as
+plain objects at module load, including during SSR, before any stylesheet
+or DOM exists to read `getComputedStyle` from. The two are kept in sync by
+hand; `lib/motion.ts`'s header comment says so at the point someone would
+edit either one.
+
+**Reduced motion is automatic**, per the brief's requirement that sections
+never handle it themselves:
+[`components/motion/MotionProvider.tsx`](../components/motion/MotionProvider.tsx)
+wraps the app in Framer Motion's own `<MotionConfig reducedMotion="user">`
+(mounted once, in `app/layout.tsx`). When the OS-level `prefers-reduced-motion`
+preference is set, every `motion.*` animation anywhere in the app —
+including every variant above — automatically drops transform-based motion
+(position, scale, rotation) to an instant application and keeps only
+opacity/colour transitions, with zero per-section opt-in.
+
+### `/styleguide`
+
+Renders every token category and a live, replayable demo of every motion
+variant — the brief's own visual QA tool, and also how the token mappings
+above were actually verified rather than assumed. Visible in local dev and
+Vercel preview deployments; 404s (via `notFound()`) when
+`VERCEL_ENV === "production"`, and carries `robots: { index: false, follow:
+false }` regardless, so it never appears in search results even before that
+gate matters.
+
+## SEO & social sharing
+
+Added in Phase 22. Everything below is generated from the database — a new
+project gets a title, a description, a canonical URL, a social card, its own
+structured data, and a sitemap entry without a single line of new code.
+
+### Where each piece lives
+
+| Concern | File |
+| --- | --- |
+| Origin, canonical/OG URL rules, the shared metadata builder | `lib/seo.ts` |
+| schema.org JSON-LD builders (pure functions over content rows) | `lib/jsonLd.ts` |
+| The structured-data render seam | `components/seo/JsonLd.tsx` |
+| Generated 1200×630 project cards | `app/(site)/projects/[slug]/opengraph-image.tsx` |
+| `sitemap.xml` | `app/sitemap.ts` |
+| `robots.txt` | `app/robots.ts` |
+| `updated_at` reads that exist only for the sitemap | `lib/data/sitemap.ts` |
+
+### Titles
+
+`metadataBase` is set once, in the true root layout, because both route
+trees need it to resolve relative canonical/OG URLs. The **title template**
+lives one level down, in `app/(site)/layout.tsx`, where `site_settings` is
+actually meaningful — `title: { default: site_title, template: "%s | <full_name>" }`.
+
+So every page sets a bare title and gets the brand appended: `"Projects"` →
+`Projects | Syed Asif`, a project's own name → `Project Name | Syed Asif`.
+The homepage opts out with `title.absolute`, since `site_title` already
+contains the name and would otherwise read *"Syed Asif — Analytics & ML
+Engineer | Syed Asif"*. `/admin` never sees any of this — it has its own
+`{ default: "Admin", template: "%s — Admin" }` and is `noindex`.
+
+### Why every page goes through `buildPageMetadata`
+
+Next merges `Metadata` root-to-leaf, but it **replaces** the `openGraph` and
+`twitter` objects wholesale rather than merging them field by field. A page
+that sets only `openGraph.title` therefore silently drops the layout's
+image, `url`, and `site_name` — a bug that is invisible locally and only
+shows up as a broken preview in someone else's chat window.
+`buildPageMetadata` exists so that can't happen: one call produces the
+canonical, the full Open Graph object, and a matching Twitter card, all
+describing the same page with the same strings.
+
+### Social cards
+
+Project pages use Next's `opengraph-image` metadata-file convention, with
+`twitter-image.tsx` re-exporting the same module so `og:image` and
+`twitter:image` can never drift. The card is drawn with `next/og`
+(satori) — which renders without a browser and so understands neither
+Tailwind utilities nor CSS custom properties, making inline literals
+unavoidable. Those literals are collected into one `OG_COLORS` constant that
+mirrors `styles/tokens.css`; it is the single sanctioned exception to
+CLAUDE.md's "no arbitrary values" rule, and the only place in the codebase
+where a token value is duplicated.
+
+The card shows the project name, its short description, the person's name
+and headline, and up to four technologies. Its backdrop is the project's
+`cover_image_url`, falling back to `site_settings.og_image_url` when the
+project has none. Because any of those paths can point at an asset that was
+never uploaded, the backdrop is **probed with a HEAD request first** —
+satori throws on a 404 HTML body handed to it as an image, which would take
+down the whole card rather than just its background.
+
+**Caching:** a metadata route is cached exactly like a page.
+`generateStaticParams` pre-renders one card per published project at build
+time, and `revalidate = 3600` matches the detail page's own ISR window.
+Nothing regenerates per request.
+
+### Structured data
+
+One structured-data script per page, carrying an `@graph` of linked nodes
+rather than several separate scripts:
+
+- **Homepage** — `Person` (`jobTitle`, `alumniOf` from `education`,
+  `knowsAbout` from `skills`, `sameAs` from `contact_links`, `image`,
+  `worksFor` only when an experience row is actually `is_current`) plus
+  `WebSite`, cross-referenced by `@id`.
+- **`/projects`** — `BreadcrumbList`.
+- **`/projects/[slug]`** — `SoftwareSourceCode` when the project has a
+  `github_url`, `CreativeWork` otherwise, plus `BreadcrumbList`.
+- **Blog** — `buildArticleJsonLd` exists and is gated behind
+  `blogJsonLdEnabled(siteSettings)`, but nothing calls it yet: the blog has
+  no public route, and Article markup for a page no crawler can reach would
+  describe a page that doesn't exist.
+
+Two rules the builders enforce: **nothing is claimed that the page doesn't
+visibly render**, and every field whose source column is empty is dropped
+rather than filled with a plausible default. Certifications and achievements
+are deliberately unmodelled — schema.org's
+`EducationalOccupationalCredential` wants accrediting-body identity this
+schema doesn't store, and there is no honest type for a generic
+"achievement".
+
+A draft being previewed (`draftMode`) emits **no** structured data and is
+marked `noindex`: preview renders unpublished content at a real URL, and the
+one thing that must never happen is a crawler catching an unfinished project
+there.
+
+### Sitemap and robots
+
+`app/sitemap.ts` lists the homepage, `/projects`, and every published
+project, with `lastModified` taken from real `updated_at` values.
+`lib/data/sitemap.ts` supplies them and tags its cached reads with the same
+`CACHE_TAGS` the admin panel already revalidates, so publishing a change
+updates the sitemap's dates along with the page. The homepage's date is the
+newest `updated_at` across *every* table it renders, since it is one page
+composed of all of them — and RLS makes that correct for free, because anon
+only ever sees published rows.
+
+`app/robots.ts` allows everything except `/admin` (which covers
+`/admin/login` and the `/admin/preview/*` draft-mode toggles), `/styleguide`,
+and `/resume/unavailable`. Each of those is *also* `noindex` in its own
+route metadata, because the two mechanisms do different jobs: robots.txt
+asks a crawler not to **fetch** a URL, `noindex` asks it not to **list**
+one. A URL that is only disallowed can still be listed if something links to
+it; a URL that is only noindexed still gets fetched. Both together are what
+actually keeps a page out.
+
+### Semantic HTML
+
+Audited across the whole public site in Phase 22 (see
+[docs/progress.md](./progress.md)'s Phase 22 entry for the findings). The
+standing rules:
+
+- **Exactly one `h1` per page**, and no skipped levels. `SectionHeading`
+  takes a `level` prop and `ProjectCard` a `headingLevel` one for exactly
+  this reason — the same card is an `h3` inside the homepage's Projects
+  section (which supplies the `h2`) and an `h2` on `/projects`, where it
+  follows the page's `h1` directly.
+- **One `main` element, in `app/(site)/layout.tsx`.** No page renders its own.
+- **Every `section` carries an accessible name** via `aria-labelledby`
+  pointing at its own heading (`Section`'s `labelledBy` prop,
+  `SectionHeading`'s `headingId`), so a landmark list reads "Projects"
+  rather than "region".
+- **Link text says where the link goes.** No "click here"/"read more".
+- **Alt text** is either descriptive or deliberately empty *with* an
+  accessible name supplied by the wrapper — an image inside a button already
+  labelled "Open Screenshot 3" takes an empty alt so it isn't announced
+  twice. `lib/media.ts`'s `resolveMediaLabel` is the one place that decision
+  is made for project media (`alt_text` → `title` → a generated label).
+
+## Resilience
+
+Added in Phase 23. The goal: a visitor never sees a raw error, an empty
+band, a broken image, or an unexplained blank screen — and an admin never
+sees "Something went wrong" where a specific, actionable message was
+possible.
+
+### "Empty" and "unreachable" are different facts
+
+This is the load-bearing idea. Before Phase 23, every `lib/data` read
+swallowed its error and returned `null`/`[]`, so an unreachable database
+was indistinguishable from genuinely empty content. Confirmed by pointing
+`NEXT_PUBLIC_SUPABASE_URL` at a dead port, the result was three separate
+lies:
+
+- the homepage rendered a hollow shell — nav, "Hello, I'm Portfolio",
+  footer, every section silently self-hidden;
+- `/projects` said "No projects yet. Published projects will show up here
+  once they're added";
+- `/projects/[slug]` returned a blank 404, claiming a real project didn't
+  exist.
+
+And because those empty values were returned from inside
+`unstable_cache`, they were **cached for an hour** — seconds of database
+trouble kept the site looking empty long after it recovered.
+
+`lib/data/shared.ts` now classifies errors. Connectivity-class failures
+(transport errors, 5xx, PostgREST's JWT failures, Postgres `08*` connection
+codes) throw `DataUnavailableError`; everything else keeps the old
+log-and-return-empty behaviour, since those are developer bugs that
+shouldn't take a production page down. Throwing also means the bad value is
+never cached.
+
+`tolerateUnavailable(read, fallback)` opts specific callers back out of
+that: the site layout's chrome (which has hard-coded fallbacks for exactly
+this), `generateMetadata`, `sitemap.ts`, the OG image route, and
+`generateStaticParams` — that last one so an outage during a build can't
+fail the deploy. **Page content never tolerates**; that's the path that has
+to surface the degraded state.
+
+### Where the degraded state comes from — two different mechanisms
+
+Not one boundary, because one doesn't cover both render paths:
+
+| Render path | What handles an outage |
+| --- | --- |
+| Dynamic routes (`ƒ`) — all of `/admin` | `error.tsx` boundaries |
+| Statically generated / ISR (`○`, `●`) — the whole public site | The page's own `try`/`catch` returning `<ContentUnavailable />` |
+
+The second row was found the hard way. `app/(site)/error.tsx` works
+perfectly for dynamic routes — verified with PostgREST stopped, `/admin`
+rendered its boundary cleanly. But a slug that wasn't prerendered is
+generated on demand as *cacheable static output*, and a throw during that
+generation never reaches a React error boundary: Next returns bare
+"Internal Server Error" text. So the homepage, `/projects` and
+`/projects/[slug]` each guard their own data fetch and return a Server
+Component degraded state instead.
+
+`connection()` looks like the right way to keep that response out of the
+route cache, and isn't: it cannot convert an in-flight static generation,
+and throws `DYNAMIC_SERVER_USAGE` — which becomes the same bare 500. The
+accepted trade is that a degraded response may be cached for up to
+`revalidate` (verified: it is), clearing on the next revalidation or the
+moment the admin panel revalidates that entity's tag. A styled,
+self-healing page beats raw error text.
+
+### What error pages may say
+
+Every boundary renders `error.digest` — an opaque hash that lets a report
+be matched to a server log line — and **never `error.message`**. Next
+already redacts Server Component messages in production, but a *client*
+render error keeps its real message, so relying on the framework alone
+would leak. `ErrorScreen`'s `devDetail` prop is gated on `NODE_ENV` and
+compiles out of production builds. The real error is always logged in full,
+server-side.
+
+`app/global-error.tsx` is deliberately self-contained — it renders when the
+root layout itself failed, so it supplies its own `<html>`/`<body>`,
+imports `globals.css` directly, uses a plain `<a>` (a full document load is
+the recovery), and writes `background`/`color` as `var(--token, #literal)`
+so text stays legible even if the stylesheet didn't load.
+
+### Loading states
+
+Each `loading.tsx` is scoped to a segment with no dynamic children, using
+route groups (`(home)`, `(index)`) where the file would otherwise cascade.
+Two reasons: a hero-shaped skeleton flashing over `/projects` is worse than
+none, and the cascade is what caused Phase 18's hydration bug. Hydration on
+`/projects/[slug]` was re-verified live afterwards.
+
+The homepage additionally wraps each section in its own `<Suspense>` so one
+slow query streams alone instead of holding the document — observed
+working: five distinct section skeletons appeared and resolved
+independently on a cold navigation.
+
+### Admin
+
+- Optimistic mutations roll back visibly. Verified by stopping Postgres
+  with the list page open: the publish toggle flipped, the action failed,
+  the toggle returned to its original state and an error toast explained
+  why.
+- Uploads report **real byte progress** (`XMLHttpRequest`, because
+  `@supabase/storage-js` uploads via `fetch`, which has no progress event).
+- `lib/storage/errors.ts` maps Storage failures onto actionable copy — size
+  limits in megabytes, accepted file types by name, "your session expired",
+  "the bucket doesn't exist" — instead of a raw Postgres/Storage string or
+  a flat "Upload failed."
+- Auth failures distinguish three outcomes, not two. `resolveAdminAuth`
+  returns `authenticated` / `unauthenticated` / `unavailable`, so an
+  outage no longer tells an admin to sign in again — and no longer
+  redirects them to a login page backed by the same database. The
+  `unauthenticated` case still merges "no session" and "not the admin" into
+  one indistinguishable outcome, so nothing is leaked about which accounts
+  exist.
+
+### Empty states
+
+Audited field by field against the real database, with the results and the
+method in [docs/empty-states.md](./empty-states.md).

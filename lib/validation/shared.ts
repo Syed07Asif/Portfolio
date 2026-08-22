@@ -1,0 +1,107 @@
+import { z } from "zod";
+
+/**
+ * Reusable pieces shared across the per-entity schemas in this folder.
+ * These are the single source of truth for admin form validation AND
+ * server-side validation in later phases — see lib/validation/README.md.
+ */
+
+/** Lowercase, hyphen-separated, no leading/trailing hyphen — matches what public.slugify() produces. */
+export const slugSchema = z
+  .string()
+  .min(1, "Slug is required")
+  .regex(
+    /^[a-z0-9]+(-[a-z0-9]+)*$/,
+    "Slug must be lowercase letters, numbers, and single hyphens, with no leading or trailing hyphen",
+  );
+
+export const requiredUrlSchema = z.url("Must be a valid URL");
+/** Empty string is treated as "not provided" — form inputs left blank submit as "", not undefined. */
+export const optionalUrlSchema = z
+  .union([requiredUrlSchema, z.literal("")])
+  .optional()
+  .nullable()
+  .transform((value) => (value === "" ? null : (value ?? null)));
+
+/**
+ * Root-relative path — "/images/avatar.jpg", not "images/avatar.jpg" or
+ * "//evil.com" (a scheme-relative URL, which browsers treat as absolute
+ * and pointing off-site — rejected here for the same reason
+ * lib/auth.ts's resolveNextPath rejects it for redirect targets).
+ */
+const rootRelativePathSchema = z
+  .string()
+  .regex(/^\/(?!\/)\S*$/, "Must be a valid URL or a root-relative path (e.g. /images/photo.jpg)");
+
+/**
+ * Same as `optionalUrlSchema`, but also accepts a root-relative path — for
+ * columns holding an **uploaded asset** (a logo, avatar, cover image,
+ * certificate PDF, supporting document, OG image), never for a
+ * general-purpose external link. Every uploaded value going forward is a
+ * real absolute Storage URL (see lib/storage/upload.ts), but
+ * supabase/seed.sql seeds every one of these columns with a placeholder
+ * relative path like "/images/avatar.jpg" or
+ * "/documents/certifications/aws-ml-specialty.pdf" (no real asset pipeline
+ * exists yet — see docs/progress.md's Phase 8 entry), and the public site
+ * already resolves that shape today (Phase 16's resume route does the same
+ * thing for `file_url`). Without this, editing any still-seeded entity
+ * through the admin — without also replacing its asset — fails validation
+ * on a field the admin never touched.
+ *
+ * Named `optionalImageUrlSchema` when introduced in Phase 19 (which only
+ * had image columns to apply it to); renamed in Phase 21 once
+ * Certifications' certificate PDF and Achievements' supporting document
+ * needed the identical rule for a non-image asset. Genuine external links
+ * (`link_url`, `github_url`, `credential_url`, `external_link`, ...) keep
+ * the stricter `optionalUrlSchema`, since a relative path never makes
+ * sense for those.
+ */
+export const optionalAssetUrlSchema = z
+  .union([requiredUrlSchema, rootRelativePathSchema, z.literal("")])
+  .optional()
+  .nullable()
+  .transform((value) => (value === "" ? null : (value ?? null)));
+
+export const dateSchema = z.iso.date("Must be a valid date (YYYY-MM-DD)");
+export const optionalDateSchema = z
+  .union([dateSchema, z.literal("")])
+  .optional()
+  .nullable()
+  .transform((value) => (value === "" ? null : (value ?? null)));
+
+export const displayOrderSchema = z.int().nonnegative().default(0);
+export const publishedSchema = z.boolean().default(false);
+
+/** Non-empty, reasonably bounded free text — most `description`/`bio` style columns. */
+export function textSchema(maxLength = 5000) {
+  return z.string().trim().max(maxLength);
+}
+
+export function requiredTextSchema(maxLength = 500) {
+  return z.string().trim().min(1, "This field is required").max(maxLength);
+}
+
+/**
+ * File constraints, mirrored from the storage bucket config in
+ * supabase/migrations/20260816103908_rls_and_storage.sql — Storage enforces
+ * these too, so a mismatch here only ever produces a confusing client-side
+ * error, never a security gap.
+ */
+export function fileSchema({
+  maxSizeBytes,
+  allowedMimeTypes,
+}: {
+  maxSizeBytes: number;
+  allowedMimeTypes: readonly string[];
+}) {
+  return z
+    .instanceof(File)
+    .refine(
+      (file) => file.size <= maxSizeBytes,
+      `File must be ${Math.round(maxSizeBytes / (1024 * 1024))}MB or smaller`,
+    )
+    .refine(
+      (file) => allowedMimeTypes.includes(file.type),
+      `File must be one of: ${allowedMimeTypes.join(", ")}`,
+    );
+}

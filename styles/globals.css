@@ -1,27 +1,379 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/*
+ * The site is dark-mode-only — `<html>` always carries the `dark` class
+ * (app/layout.tsx), never toggled. Without this, Tailwind v4's `dark:`
+ * variant defaults to matching `prefers-color-scheme: dark`, so a visitor
+ * whose OS is in light mode would miss `dark:` utilities entirely (used by
+ * shadcn/ui's generated admin components) even though the rest of the site
+ * is already unconditionally dark via the tokens below. This makes `dark:`
+ * follow the class instead, matching how the class is actually used here.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+ * Tailwind v4 is CSS-first: this @theme block IS the Tailwind config for
+ * this project (no tailwind.config.ts — see docs/architecture.md's Design
+ * System section for why introducing one would be dead weight in v4). Every
+ * design token above becomes a real utility class here — `bg-surface`,
+ * `text-h2`, `rounded-lg`, `shadow-glow-accent-md`, `ease-out-expo`, etc.
+ * `inline` makes Tailwind read the *values* of these custom properties
+ * (already set in tokens.css) rather than re-declaring them.
+ */
 @theme inline {
+  /* Colours */
   --color-background: var(--color-background);
   --color-surface: var(--color-surface);
   --color-surface-raised: var(--color-surface-raised);
+  --color-overlay: var(--color-overlay);
   --color-border: var(--color-border);
   --color-border-strong: var(--color-border-strong);
+
   --color-foreground: var(--color-foreground);
+  --color-foreground-secondary: var(--color-foreground-secondary);
   --color-foreground-muted: var(--color-foreground-muted);
-  --color-foreground-subtle: var(--color-foreground-subtle);
-  --color-primary: var(--color-primary);
-  --color-primary-hover: var(--color-primary-hover);
-  --color-primary-foreground: var(--color-primary-foreground);
+
+  --color-accent: var(--color-accent);
+  --color-accent-hover: var(--color-accent-hover);
+  --color-accent-muted: var(--color-accent-muted);
+  --color-accent-foreground: var(--color-accent-foreground);
+
+  --color-glow-cyan: var(--color-glow-cyan);
+  --color-glow-warm: var(--color-glow-warm);
+
   --color-success: var(--color-success);
   --color-warning: var(--color-warning);
   --color-danger: var(--color-danger);
+  --color-info: var(--color-info);
+
+  --color-success-surface: var(--color-success-surface);
+  --color-warning-surface: var(--color-warning-surface);
+  --color-danger-surface: var(--color-danger-surface);
+  --color-info-surface: var(--color-info-surface);
+  --color-accent-surface: var(--color-accent-surface);
+
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-foreground: var(--color-primary-foreground);
   --color-ring: var(--color-ring);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  /*
+   * shadcn/ui compatibility — components/admin/ui/*.tsx (admin panel +
+   * overlays only, per CLAUDE.md) expect this exact variable set. Every one
+   * is an alias onto a token already defined above; nothing here is a new
+   * colour. `--color-accent` doubling as shadcn's neutral hover-highlight
+   * slot is deliberate, not an oversight — admin hover states pick up the
+   * same chartreuse brand accent as the rest of the site instead of an
+   * unrelated grey.
+   */
+  --color-card: var(--color-surface);
+  --color-card-foreground: var(--color-foreground);
+  --color-popover: var(--color-surface-raised);
+  --color-popover-foreground: var(--color-foreground);
+  --color-secondary: var(--color-surface-raised);
+  --color-secondary-foreground: var(--color-foreground);
+  --color-muted: var(--color-surface-raised);
+  --color-muted-foreground: var(--color-foreground-muted);
+  --color-destructive: var(--color-danger);
+  --color-input: var(--color-border-strong);
+  --radius: var(--radius-md);
+
+  /* Fonts */
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-sans: var(--font-body);
+
+  /* Font size scale — paired line-height + letter-spacing per Tailwind v4's font-size theme shape. */
+  --text-display: var(--text-display-size);
+  --text-display--line-height: var(--text-display-line-height);
+  --text-display--letter-spacing: var(--text-display-tracking);
+
+  --text-h1: var(--text-h1-size);
+  --text-h1--line-height: var(--text-h1-line-height);
+  --text-h1--letter-spacing: var(--text-h1-tracking);
+
+  --text-h2: var(--text-h2-size);
+  --text-h2--line-height: var(--text-h2-line-height);
+  --text-h2--letter-spacing: var(--text-h2-tracking);
+
+  --text-h3: var(--text-h3-size);
+  --text-h3--line-height: var(--text-h3-line-height);
+  --text-h3--letter-spacing: var(--text-h3-tracking);
+
+  --text-h4: var(--text-h4-size);
+  --text-h4--line-height: var(--text-h4-line-height);
+  --text-h4--letter-spacing: var(--text-h4-tracking);
+
+  --text-body-lg: var(--text-body-lg-size);
+  --text-body-lg--line-height: var(--text-body-lg-line-height);
+
+  --text-body: var(--text-body-size);
+  --text-body--line-height: var(--text-body-line-height);
+
+  --text-small: var(--text-small-size);
+  --text-small--line-height: var(--text-small-line-height);
+
+  --text-caption: var(--text-caption-size);
+  --text-caption--line-height: var(--text-caption-line-height);
+  --text-caption--letter-spacing: var(--text-caption-tracking);
+
+  /* Letter spacing (tracking-*) */
+  --tracking-tight: var(--tracking-tight);
+  --tracking-normal: var(--tracking-normal);
+  --tracking-wide: var(--tracking-wide);
+  --tracking-wider: var(--tracking-wider);
+
+  /* Spacing base multiplier — every numeric Tailwind spacing utility (p-4, gap-6, ...) derives from this. */
+  --spacing: var(--spacing);
+
+  /* Radius scale */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+
+  /* Shadow / glow scale */
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-glow-accent-sm: var(--glow-accent-sm);
+  --shadow-glow-accent-md: var(--glow-accent-md);
+  --shadow-glow-accent-lg: var(--glow-accent-lg);
+  --shadow-glow-cyan: var(--glow-cyan);
+  --shadow-glow-warm: var(--glow-warm);
+
+  /* Easing curves (ease-*) */
+  --ease-out-expo: var(--ease-out-expo);
+  --ease-out-quart: var(--ease-out-quart);
+  --ease-in-out-quart: var(--ease-in-out-quart);
+  --ease-spring: var(--ease-spring);
+
+  /*
+   * Transition durations (duration-*). These were defined in tokens.css from
+   * Phase 5 but never exported here, so `duration-fast`/`duration-base` —
+   * used in 20 places across Navbar, Footer, AdminSidebar, MediaThumbnail
+   * and others — generated no CSS whatsoever and every one of those
+   * transitions was silently instant. Phase 24 found this by grepping the
+   * *built* stylesheet for the utility rather than trusting that a class
+   * appearing in a component means a rule exists (the same "a clean build is
+   * not proof of correct rendering" lesson tokens.css's own history records).
+   */
+  --duration-instant: var(--duration-instant);
+  --duration-fast: var(--duration-fast);
+  --duration-base: var(--duration-base);
+  --duration-slow: var(--duration-slow);
+  --duration-slower: var(--duration-slower);
+  --duration-loop: var(--duration-loop);
+
+  /* Skeleton shimmer: same "pulse" keyframe Tailwind ships by default, just
+     retimed to our --duration-loop token instead of the stock 2s. */
+  --animate-pulse: pulse var(--duration-loop) cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+  font-family: var(--font-body);
+}
+
+/*
+ * Native hash/anchor scrolling (nav links, footer back-to-top) — smooth by
+ * default, dropped to an instant jump under reduced motion. This is
+ * independent of components/motion/MotionProvider, which only governs
+ * Framer Motion's `motion.*` components, not the browser's own scrolling.
+ */
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Entrance animation — CSS-driven, so the components that use it can be
+ * Server Components.
+ *
+ * WHY THIS EXISTS (Phase 24). Every public-site section used to be a client
+ * component for one reason only: Framer Motion's `revealOnScroll` +
+ * `staggerContainer`. None of them had any interactivity — the measured
+ * consequence was a single 4,459 ms main-thread hydration task on a 4x-CPU-
+ * throttled mobile profile, during which the browser could not paint at all.
+ * First paint landed at 2,912 ms with JS enabled versus ~1,633 ms with it
+ * disabled, and Lighthouse's mobile LCP was 3.7 s against a 2.5 s target.
+ * Moving the *entrance* animation to CSS is what lets those sections render
+ * as server components and drop out of hydration entirely.
+ *
+ * This does NOT replace Framer Motion (still the project's animation library
+ * per CLAUDE.md). It stays for everything genuinely stateful//interactive —
+ * the mobile menu, page transitions, the media lightbox — where an
+ * enter/exit lifecycle and JS-driven state actually earn their cost. What
+ * moved here is only the fire-and-forget "fade in as it scrolls past".
+ *
+ * Both blocks are double-guarded:
+ *   - `prefers-reduced-motion: no-preference` — under reduced motion none of
+ *     these rules exist at all, so content is simply static and visible.
+ *     This is the same guarantee MotionProvider gave, expressed in CSS.
+ *   - `@supports (animation-timeline: view())` on the scroll-driven half —
+ *     content is fully visible by default and only *becomes* animatable
+ *     where scroll-driven timelines are supported (Chrome/Edge 115+). In
+ *     Safari/Firefox the section just appears normally. Content is never
+ *     left stuck at `opacity: 0` by an unsupported feature.
+ * ------------------------------------------------------------------------ */
+
+@keyframes reveal-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /*
+   * Scroll-triggered reveal for below-the-fold content. `view()` drives the
+   * animation from the element's own position in the scrollport, so there is
+   * no observer, no timer, and no JS of any kind. Only `opacity` and
+   * `transform` are touched, so it stays on the compositor.
+   */
+  /*
+   * Gated to >=768px, and this is a measured decision rather than a
+   * stylistic one. A `view()` timeline is created per element, and on the
+   * homepage that is ~19 of them. A/B-ing the same build on a 4x-CPU-
+   * throttled mobile profile (identical machine, back to back, twice) put
+   * total long-task time at ~4,795ms with the reveals on versus ~3,780ms
+   * with them off — roughly a second of extra main-thread work, on exactly
+   * the profile whose budget is tightest. Below 768px the content is simply
+   * visible, which costs nothing and loses very little: on a narrow screen
+   * sections arrive one at a time anyway. The hero's own entrance
+   * (`.hero-in-group`) is time-based rather than scroll-driven, costs
+   * nothing measurable, and is deliberately NOT gated.
+   */
+  @media (min-width: 768px) {
+   @supports (animation-timeline: view()) {
+    /*
+     * `view()` is scroll-*linked*, not scroll-*triggered*: progress tracks the
+     * scroll position continuously rather than firing once the way Framer
+     * Motion's `whileInView` + `viewport: { once: true }` did. That difference
+     * is the whole reason this rule looks the way it does, and Phase 24 hit
+     * its failure mode twice before landing here.
+     *
+     * The trap is that a *percentage* offset into `entry` is not a fixed
+     * distance: the `entry` range spans the element's own height, so for a
+     * section taller than the viewport `entry 35%` can be hundreds of pixels
+     * of scrolling. A tall section could therefore come to rest part-way
+     * through its own fade, leaving real body text sitting at ~0.63 opacity
+     * for as long as the reader stayed at that scroll position. Lighthouse
+     * reported it as a contrast failure (2.15:1 on the About heading) and it
+     * was a genuine one, not an artifact.
+     *
+     * A *length* offset is bounded and element-height-independent: the fade
+     * always completes after 100px of scrolling, whether the element is a
+     * 60px chip or a 2000px section. Elements shorter than 100px simply clamp
+     * to the end state, which is also correct — they are fully visible.
+     *
+     * There is deliberately no per-child stagger. A scroll-linked stagger
+     * would have to push later children further into `entry`, reintroducing
+     * exactly the "needs more scrolling to become legible" hazard above for
+     * the last items in a grid. It also is not needed: items in different
+     * rows already enter at different scroll positions and so reveal in
+     * sequence naturally, which is what the staggered look was for.
+     * tests/e2e/reveal-opacity.spec.ts asserts the guarantee this comment
+     * claims, by scrolling the real page and reading computed opacity.
+     */
+    .reveal,
+    .reveal-group > * {
+      animation: reveal-fade-up linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 100px;
+    }
+  }
+  }
+
+  /*
+   * Immediate entrance for above-the-fold content (the hero), on the normal
+   * document timeline rather than a scroll one — it is already in view, so
+   * there is nothing to scroll into.
+   *
+   * Deliberately NOT `@supports`-guarded: a time-based animation with
+   * `both` fill runs everywhere, so there is no browser where this could
+   * strand content invisible. It costs LCP only the animation's own ~300ms
+   * (the element is painted the moment opacity leaves 0), which is
+   * immaterial against a 2.5s budget — the 4.5s hydration task was the
+   * actual problem, not the 300ms of animation.
+   */
+  .hero-in-group > * {
+    animation: reveal-fade-up var(--duration-base) var(--ease-out-expo) both;
+  }
+  .hero-in-group > *:nth-child(1) {
+    animation-delay: 40ms;
+  }
+  .hero-in-group > *:nth-child(2) {
+    animation-delay: 120ms;
+  }
+  .hero-in-group > *:nth-child(3) {
+    animation-delay: 200ms;
+  }
+  .hero-in-group > *:nth-child(4) {
+    animation-delay: 280ms;
+  }
+  .hero-in-group > *:nth-child(5) {
+    animation-delay: 360ms;
+  }
+  .hero-in-group > *:nth-child(6) {
+    animation-delay: 440ms;
+  }
+  .hero-in-group > *:nth-child(n + 7) {
+    animation-delay: 520ms;
+  }
+
+  /*
+   * HeroBackground's ambient drift, moved off Framer Motion for the same
+   * reason. `useInView` used to pause it off-screen; the CSS equivalent is
+   * that a compositor-only transform animation on an off-screen element
+   * costs effectively nothing, and `will-change` is deliberately NOT set so
+   * the layers are not promoted permanently.
+   */
+  @keyframes hero-drift-a {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(30px, 24px, 0) scale(1.06);
+    }
+  }
+  @keyframes hero-drift-b {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(-24px, 20px, 0) scale(1.08);
+    }
+  }
+  @keyframes hero-drift-c {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    to {
+      transform: translate3d(20px, -18px, 0) scale(1.05);
+    }
+  }
+
+  .hero-blob-a {
+    animation: hero-drift-a 18s ease-in-out infinite alternate;
+  }
+  .hero-blob-b {
+    animation: hero-drift-b 22s ease-in-out infinite alternate;
+  }
+  .hero-blob-c {
+    animation: hero-drift-c 20s ease-in-out infinite alternate;
+  }
 }
