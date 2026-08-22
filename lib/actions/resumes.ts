@@ -5,7 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 import { resumeSchema } from "@/lib/validation";
 import { CACHE_TAGS, STORAGE_BUCKETS } from "@/lib/constants";
 import { deleteStorageFolder } from "@/lib/storage/cleanup";
-import { actionError, actionSuccess, createAdminAction, parseInput, type ActionResult } from "./shared";
+import {
+  actionError,
+  actionSuccess,
+  createAdminAction,
+  parseInput,
+  withRecordId,
+  type ActionResult,
+} from "./shared";
 
 /** The active resume is linked from Hero, Contact, and Footer, all on the homepage, plus the standalone /resume download route. */
 function revalidateResume() {
@@ -24,7 +31,7 @@ function revalidateResume() {
  * if the RPC call is the one that fails.
  */
 export const createResume = createAdminAction(
-  async (_admin, input: unknown): Promise<ActionResult<{ id: string }>> => {
+  async (_admin, recordId: unknown, input: unknown): Promise<ActionResult<{ id: string }>> => {
     const parsed = parseInput(resumeSchema, input);
     if (!parsed.success) return actionError("Please fix the errors below.", parsed.fieldErrors);
 
@@ -33,7 +40,7 @@ export const createResume = createAdminAction(
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("resumes")
-      .insert({ ...rest, is_active: false })
+      .insert({ ...withRecordId(recordId), ...rest, is_active: false })
       .select("id")
       .single();
 

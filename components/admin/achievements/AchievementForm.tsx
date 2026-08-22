@@ -36,7 +36,7 @@ export function AchievementForm({ achievement, defaultDisplayOrder }: Achievemen
   const { form, isPending, onValid } = useAdminForm({
     schema: achievementSchema,
     defaultValues,
-    onSubmit: (values) => (achievement ? updateAchievement(achievement.id, values) : createAchievement(values)),
+    onSubmit: (values) => (achievement ? updateAchievement(achievement.id, values) : createAchievement(recordId, values)),
     successMessage: achievement ? "Achievement updated." : "Achievement created.",
     redirectTo: "/admin/achievements",
   });

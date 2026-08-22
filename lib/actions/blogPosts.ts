@@ -1,6 +1,8 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { STORAGE_BUCKETS } from "@/lib/constants";
+import { deleteStorageFolder } from "@/lib/storage/cleanup";
 import { getAuthenticatedAdmin } from "@/lib/auth";
 import { blogPostSchema } from "@/lib/validation";
 import {
@@ -9,6 +11,7 @@ import {
   createAdminAction,
   parseInput,
   reorderInputSchema,
+  withRecordId,
   type ActionResult,
 } from "./shared";
 import { resolvePublishedAt } from "./blogShared";
@@ -21,14 +24,14 @@ const UNIQUE_VIOLATION = "23505";
 // ./blogShared.ts — see that file for why it can't be defined here.
 
 export const createBlogPost = createAdminAction(
-  async (_admin, input: unknown): Promise<ActionResult<{ id: string }>> => {
+  async (_admin, recordId: unknown, input: unknown): Promise<ActionResult<{ id: string }>> => {
     const parsed = parseInput(blogPostSchema, input);
     if (!parsed.success) return actionError("Please fix the errors below.", parsed.fieldErrors);
 
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("blog_posts")
-      .insert({ ...parsed.data, published_at: resolvePublishedAt(parsed.data.status, null) })
+      .insert({ ...withRecordId(recordId), ...parsed.data, published_at: resolvePublishedAt(parsed.data.status, null) })
       .select("id")
       .single();
 
@@ -71,6 +74,14 @@ export const updateBlogPost = createAdminAction(
 
 export const deleteBlogPost = createAdminAction(async (_admin, id: string): Promise<ActionResult<null>> => {
   const supabase = await createClient();
+
+  // Blog posts own a cover image, so they need the same storage cleanup as
+  // every other entity with an uploader. This call was simply missing until
+  // Phase 25 audited the delete paths — the only reason it never produced a
+  // visible bug is that the public blog does not exist yet, so almost no
+  // post has ever been created, let alone deleted.
+  await deleteStorageFolder(STORAGE_BUCKETS.blog.id, id);
+
   const { error } = await supabase.from("blog_posts").delete().eq("id", id);
 
   if (error) {

@@ -97,3 +97,60 @@ export function createAdminAction<TArgs extends unknown[], TResult>(
     }
   };
 }
+
+/**
+ * A v4 UUID, as produced by `crypto.randomUUID()` in the browser.
+ * Deliberately narrow: this value becomes a primary key, so anything that
+ * isn't unmistakably a generated UUID is rejected rather than coerced.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Resolves the client-supplied record id that a `createX` action should
+ * insert as the new row's primary key, or `null` to let Postgres generate
+ * one.
+ *
+ * ## Why a create action takes an id at all
+ *
+ * Every uploader writes to `{bucket}/{recordId}/{uuid}.{ext}`, and on a
+ * *create* form there is no row id yet — so `<Entity>Form` generates a
+ * placeholder with `crypto.randomUUID()` and uploads under that (see
+ * docs/content-management.md's "Uploads and storage cleanup").
+ *
+ * That placeholder used to be thrown away: the insert let Postgres generate
+ * a different id, and the files stayed under the placeholder folder forever.
+ * `deleteStorageFolder(bucket, id)` then looked in `{bucket}/{realId}/`,
+ * which was empty, and every file uploaded before the first save was
+ * orphaned permanently — invisible, because the row's `file_url` still
+ * pointed at the placeholder folder and the image kept rendering.
+ *
+ * Adopting the placeholder *as* the primary key removes the mismatch at the
+ * source rather than reconciling it afterwards: the folder a file was
+ * uploaded to is, from the first byte, the folder the record owns. No move
+ * step, nothing to keep in sync, and one code path for create and edit.
+ *
+ * ## Why it is safe to let the client choose a primary key
+ *
+ * The caller is an authenticated admin — `createAdminAction` has already
+ * established that, and RLS independently requires `is_admin()` for the
+ * insert. A v4 UUID collision is not a practical concern, and a deliberate
+ * collision just produces a unique-violation error, which every create
+ * action already handles. The id carries no authority of its own.
+ *
+ * A malformed or absent value falls back to the column default, so a caller
+ * that has no sensible id (a bulk import, a future server-side creation
+ * path) keeps working without inventing one.
+ */
+export function resolveNewRecordId(value: unknown): string | null {
+  return typeof value === "string" && UUID_PATTERN.test(value) ? value : null;
+}
+
+/**
+ * Spreadable `{ id }` for an insert — `{}` when there is no usable id, so
+ * the column default applies. Lets a create action write
+ * `.insert({ ...withRecordId(recordId), ...parsed.data })` without branching.
+ */
+export function withRecordId(value: unknown): { id?: string } {
+  const id = resolveNewRecordId(value);
+  return id ? { id } : {};
+}

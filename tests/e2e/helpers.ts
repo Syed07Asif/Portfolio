@@ -45,7 +45,59 @@ export async function dbClient() {
 /** Every row this suite creates is prefixed so cleanup can never touch real content. */
 export const TEST_PREFIX = "zz-phase24";
 
+/**
+ * Removes this suite's test projects *and* the Storage objects they own.
+ *
+ * The storage half is not incidental tidying. This helper deletes rows
+ * straight through PostgREST, deliberately — it is fixture cleanup, and
+ * routing it through `deleteProject` would make setup depend on the very
+ * action some of these tests are asserting about. But that also means it
+ * skips `deleteStorageFolder`, which is the *only* thing that removes a
+ * project's uploaded files. Phase 25 measured the result: `storage.objects`
+ * went 0 -> 2 across a single full run (one per browser project), because
+ * owner-journey.spec.ts uploads a real file and nothing ever removed it.
+ *
+ * So the folder has to be cleared explicitly here. The ids are read before
+ * the delete, since afterwards there is nothing left to look them up by.
+ */
 export async function deleteTestProjects() {
   const db = await dbClient();
+
+  const { data: doomed } = await db
+    .from("projects")
+    .select("id")
+    .like("slug", `${TEST_PREFIX}%`);
+
   await db.from("projects").delete().like("slug", `${TEST_PREFIX}%`);
+
+  for (const { id } of doomed ?? []) {
+    const { data: entries } = await db.storage.from("projects").list(id);
+    if (!entries || entries.length === 0) continue;
+    await db.storage.from("projects").remove(entries.map((entry) => `${id}/${entry.name}`));
+  }
+}
+
+/**
+ * How many objects sit in the `projects` bucket right now. Used by
+ * storage-cleanup.spec.ts to assert that a delete actually reclaims them
+ * rather than leaving orphans behind — a count is the only way to see this,
+ * since an orphaned file is invisible from the UI and from the database.
+ */
+export async function countProjectStorageObjects(): Promise<number> {
+  const db = await dbClient();
+  const { data: folders } = await db.storage.from("projects").list("");
+  if (!folders) return 0;
+
+  let total = 0;
+  for (const folder of folders) {
+    // A null id means "folder", matching the convention scripts/export-storage.ts
+    // relies on; a non-null id is a file sitting at the bucket root.
+    if (folder.id !== null) {
+      total += 1;
+      continue;
+    }
+    const { data: entries } = await db.storage.from("projects").list(folder.name);
+    total += entries?.filter((entry) => entry.id !== null).length ?? 0;
+  }
+  return total;
 }

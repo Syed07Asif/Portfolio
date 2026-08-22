@@ -13,6 +13,7 @@ import {
   createAdminAction,
   parseInput,
   reorderInputSchema,
+  withRecordId,
   type ActionResult,
 } from "./shared";
 
@@ -121,7 +122,7 @@ async function writeProjectChildren(
 }
 
 export const createProject = createAdminAction(
-  async (_admin, input: unknown): Promise<ActionResult<{ id: string; slug: string }>> => {
+  async (_admin, recordId: unknown, input: unknown): Promise<ActionResult<{ id: string; slug: string }>> => {
     const parsed = parseInput(projectFormSchema, input);
     if (!parsed.success) return actionError("Please fix the errors below.", parsed.fieldErrors);
 
@@ -131,7 +132,7 @@ export const createProject = createAdminAction(
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("projects")
-      .insert({ ...projectFields, slug })
+      .insert({ ...withRecordId(recordId), ...projectFields, slug })
       .select("id")
       .single();
 

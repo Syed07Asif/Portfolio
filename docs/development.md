@@ -376,6 +376,19 @@ Smaller job, when the content type already exists.
 - **Empty and unreachable are different facts.** A database outage that
   looks like "no content" gets *cached* as no content. See
   [docs/architecture.md](./architecture.md#resilience).
+- **A `createX` action takes the record id as its first argument**, and the
+  form must pass the same `recordId` its uploaders wrote to. This is not
+  ceremony: uploads on a create form happen before the row exists, so the id
+  is generated client-side, and if the insert lets Postgres pick a different
+  one instead, every file uploaded before the first save is orphaned forever
+  — invisibly, because the row's URL still resolves and the image still
+  renders. See `resolveNewRecordId` in
+  [`lib/actions/shared.ts`](../lib/actions/shared.ts), and
+  `tests/e2e/storage-cleanup.spec.ts` for the regression test.
+- **An `ImageUploader`'s thumbnail never becomes the Storage URL.** It stays
+  the local `blob:` preview for the component's whole life. Waiting on a
+  Storage `src` in a test hangs; wait for the "Image uploaded." toast, which
+  is emitted on the line after `onChange`.
 
 ---
 
@@ -469,8 +482,10 @@ being careful about.
   trigger and the two Supabase values in repository secrets would do it. Left
   manual because an unmonitored backup job that silently stops working is
   worse than a calendar reminder.
-- **Orphaned Storage cleanup.** Deleting a project cascades its
-  `project_media` rows but leaves the files. Nothing reaps them.
+- **Scheduled orphan sweeping.** Deletes now reclaim their files, and
+  `npm run storage:orphans` finds anything that slipped through, but nothing
+  runs it automatically. The two remaining sources are files stranded before
+  the create-form fix, and uploads abandoned before a first save.
 - **A second Supabase project for Preview.** See
   [docs/deployment.md](./deployment.md#one-supabase-project-or-two) for when
   this stops being optional.

@@ -11,6 +11,7 @@ import {
   createAdminAction,
   parseInput,
   reorderInputSchema,
+  withRecordId,
   type ActionResult,
 } from "./shared";
 
@@ -21,12 +22,16 @@ function revalidateAchievements() {
 }
 
 export const createAchievement = createAdminAction(
-  async (_admin, input: unknown): Promise<ActionResult<{ id: string }>> => {
+  async (_admin, recordId: unknown, input: unknown): Promise<ActionResult<{ id: string }>> => {
     const parsed = parseInput(achievementSchema, input);
     if (!parsed.success) return actionError("Please fix the errors below.", parsed.fieldErrors);
 
     const supabase = await createClient();
-    const { data, error } = await supabase.from("achievements").insert(parsed.data).select("id").single();
+    const { data, error } = await supabase
+      .from("achievements")
+      .insert({ ...withRecordId(recordId), ...parsed.data })
+      .select("id")
+      .single();
 
     if (error || !data) {
       console.error("[lib/actions/achievements] createAchievement:", error?.message);

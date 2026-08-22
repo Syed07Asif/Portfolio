@@ -14,6 +14,7 @@
     "test:e2e:edge": "playwright test --project=edge",
     "backup:content": "tsx scripts/export-content.ts",
     "backup:storage": "tsx scripts/export-storage.ts",
+    "storage:orphans": "tsx scripts/sweep-orphans.ts",
     "backup": "npm run backup:content && npm run backup:storage"
   },
   "dependencies": {
