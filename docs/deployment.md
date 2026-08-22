@@ -635,8 +635,10 @@ exactly the failure this section exists to prevent.
   `npm run test:e2e`, and deploy through a preview first. Next.js majors in
   particular have moved fast enough that CLAUDE.md carries a standing warning
   to read `node_modules/next/dist/docs/` rather than trusting memory.
-- **Orphaned Storage objects accumulate.** Deleting a project deletes its
-  `project_media` rows (via cascade) but not the underlying files. Nothing
-  cleans these up today. `npm run backup:storage -- --dry-run` shows the
-  object count per bucket; if it drifts far above what the content actually
-  references, that's the cause.
+- **Sweep orphaned Storage objects occasionally.** Deleting a record now
+  reclaims the files it owns, but two things still strand files: anything
+  left over from before that was fixed, and uploads that succeed and are then
+  abandoned (the admin replaced an image before saving, or closed a
+  half-filled create form). `npm run storage:orphans` reports what nothing
+  references; add `--delete` to remove it. Worth running once or twice a year,
+  or any time Storage usage looks higher than the content justifies.

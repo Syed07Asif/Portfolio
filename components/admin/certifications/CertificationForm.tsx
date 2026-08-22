@@ -40,7 +40,7 @@ export function CertificationForm({ certification, defaultDisplayOrder }: Certif
   const { form, isPending, onValid } = useAdminForm({
     schema: certificationSchema,
     defaultValues,
-    onSubmit: (values) => (certification ? updateCertification(certification.id, values) : createCertification(values)),
+    onSubmit: (values) => (certification ? updateCertification(certification.id, values) : createCertification(recordId, values)),
     successMessage: certification ? "Certification updated." : "Certification created.",
     redirectTo: "/admin/certifications",
   });

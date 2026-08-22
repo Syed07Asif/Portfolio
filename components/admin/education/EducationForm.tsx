@@ -41,7 +41,7 @@ export function EducationForm({ education, defaultDisplayOrder }: EducationFormP
   const { form, isPending, onValid } = useAdminForm({
     schema: educationSchema,
     defaultValues,
-    onSubmit: (values) => (education ? updateEducation(education.id, values) : createEducation(values)),
+    onSubmit: (values) => (education ? updateEducation(education.id, values) : createEducation(recordId, values)),
     successMessage: education ? "Education entry updated." : "Education entry created.",
     redirectTo: "/admin/education",
   });

@@ -53,7 +53,10 @@ export function ResumeUploadForm() {
       const path = buildStoragePath(recordId, file);
       const uploaded = await uploadFile(STORAGE_BUCKETS.resume.id, path, file);
 
-      const result = await createResume({
+      // The same `recordId` the file was just uploaded under becomes the
+      // row's primary key, so `resume/{id}/` is the folder this row owns
+      // from the first byte — see resolveNewRecordId in lib/actions/shared.ts.
+      const result = await createResume(recordId, {
         file_url: uploaded.url,
         storage_path: extractStoragePath(uploaded.url, STORAGE_BUCKETS.resume.id),
         version_label: versionLabel.trim() || null,

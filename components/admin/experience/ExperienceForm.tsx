@@ -42,7 +42,7 @@ export function ExperienceForm({ experience, defaultDisplayOrder }: ExperienceFo
   const { form, isPending, onValid } = useAdminForm({
     schema: experienceSchema,
     defaultValues,
-    onSubmit: (values) => (experience ? updateExperience(experience.id, values) : createExperience(values)),
+    onSubmit: (values) => (experience ? updateExperience(experience.id, values) : createExperience(recordId, values)),
     successMessage: experience ? "Experience entry updated." : "Experience entry created.",
     redirectTo: "/admin/experience",
   });

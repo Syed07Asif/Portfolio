@@ -20,8 +20,9 @@ that restores the site's *view* of the content rather than the content.
 | --- | --- | --- |
 | `export-content.ts` | `npm run backup:content` | Writes every row of all 15 content tables to `backups/content/<timestamp>/`, one JSON file per table plus `all.json` and `manifest.json`. |
 | `export-storage.ts` | `npm run backup:storage` | Downloads every object in every Storage bucket to `backups/storage/<timestamp>/<bucket>/<path>`, plus a `manifest.json`. |
-| `lib/backup-env.ts` | — | Shared env resolution for both. Not a script. |
-| — | `npm run backup` | Both, in order. |
+| `sweep-orphans.ts` | `npm run storage:orphans` | Reports Storage objects that no content row references. Deletes them only with `--delete`. |
+| `lib/backup-env.ts` | — | Shared env resolution for all three. Not a script. |
+| — | `npm run backup` | Both exports, in order. |
 
 `backups/` is git-ignored. It holds real content — including unpublished
 drafts and every uploaded file — and belongs in private storage off this
@@ -68,7 +69,33 @@ and it failed with `42501 permission denied for table profile` on its first
 run. If you see that error, the migration has not been applied to whichever
 project you're pointed at.
 
-## Both scripts support `--dry-run`
+## The orphan sweep
+
+`npm run storage:orphans` answers "which uploaded files is nothing pointing
+at any more?" It reads every column of every content table, collects every
+string, and flags a Storage object only if its `bucket/path` appears in none
+of them. Reading every column rather than a list of known file columns means
+a column added later is covered automatically — and that the failure mode of
+an unknown column is keeping a genuine orphan, not deleting a live one.
+
+It reports and exits. `--delete` is required to remove anything:
+
+```bash
+npm run storage:orphans                      # report
+npm run storage:orphans -- --delete          # actually remove
+npm run storage:orphans -- --env .env.production.local
+```
+
+Read the report before deleting. A surprisingly large orphan count usually
+means the wrong project, not a lot of garbage.
+
+Two things produce orphans even now that the create-form bug is fixed
+(`resolveNewRecordId` in `lib/actions/shared.ts`): files stranded by that old
+behaviour, which no delete will ever reach; and uploads that succeed and are
+then abandoned, because the admin replaced the image before saving or closed
+a half-filled create form. Nothing but a sweep can identify the second kind.
+
+## Both export scripts support `--dry-run`
 
 Prints exactly what would be exported — table row counts, bucket object
 counts, total size — and writes nothing. Worth using the first time you point

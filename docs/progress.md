@@ -106,6 +106,14 @@ recreating that admin account afterward. This bit Phase 21.
 > host (a real Next 16 behaviour, see the entry), a fifth migration granting
 > `service_role` the table privileges it never had, and a new `scripts/`
 > folder holding the two backup/export scripts. Docs were rewritten wholesale.
+>
+> **A follow-up after that** fixed the Storage orphan bug the Phase 25 entry
+> had recorded as unfixed *and misdiagnosed*: the leak was on the **create**
+> path, not the delete path — a create form's placeholder upload folder was
+> never adopted as the row's id, so anything uploaded before a first save was
+> orphaned forever, invisibly. `createX` actions now take the record id as
+> their first argument. See the last entry in this file; it is the one worth
+> reading before touching any create action. E2E is now **70 tests** (was 66).
 
 
 **Phases 1–24 are done and verified. Phase 24 (verify and harden) is
@@ -205,9 +213,12 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   local test admin account had to be recreated afterward — see the account
   bullet below and Phase 17's log entry for the exact steps.
 
-- **Branch:** `develop` (all phase work happens here; `main` is still just
-  the Phase 1 scaffold — nothing has been merged up yet). Tracks
-  `origin/develop` on `https://github.com/Syed07Asif/Portfolio.git`.
+- **Branch:** `develop` for work; **`main` now holds the release.** Phase 25
+  merged `develop` into `main` as `2b9d630` ("Release v1.0.0") and tagged
+  **`v1.0.0`**; both are pushed. Before that, `main` had been the Phase 1
+  scaffold (`c859f71`) with nothing merged up. Both branches track
+  `https://github.com/Syed07Asif/Portfolio.git`, and `main` and `develop`
+  are identical in content — `git diff develop main` is empty.
 - **Phase 24 tooling is installed but unused.** `lighthouse`, `axe-core`,
   `vitest` and `@playwright/test` are in `devDependencies` (committed, so
   the tree is clean and a fresh session doesn't have to re-install). No
@@ -260,7 +271,17 @@ after test-row cleanup. **Phases 20 and 21 are committed and pushed** as
   (drag-to-reorder — `AdminTable` and `MultiImageUploader`), plus two more
   shadcn components generated into `components/admin/ui/`: `switch.tsx`,
   `textarea.tsx`. No new dependencies were needed for Phase 20.
-- **Latest commit:** `b427693` — "Phase 24: verify and harden —
+- **Latest commit:** `42ef9ac` — "Phase 25: launch readiness — security
+  headers, backups, and documentation," pushed to `origin/develop` (16 files
+  — `git show 42ef9ac --stat`; the commit message carries the full
+  reasoning and this file's Phase 25 entry the narrative). `develop` was
+  then merged into `main` as **`2b9d630`** and tagged **`v1.0.0`**, both
+  pushed. This very edit (recording those hashes) is a docs-only follow-up
+  on top of `42ef9ac`, so expect `git log --oneline` on `develop` to show
+  one commit above it that changed nothing but `docs/progress.md` — and
+  note `main` will then be one commit *behind* `develop` again until that
+  follow-up is merged up, which is expected and not a problem.
+  Before that, `b427693` — "Phase 24: verify and harden —
   accessibility, performance, and a test suite," pushed to `origin/develop`
   (39 files — `git show b427693 --stat`; the commit message carries the full
   reasoning, and this file's Phase 24 entry the narrative, including the
@@ -3143,11 +3164,128 @@ back to `localhost`, there being no Vercel-URL fallback in `lib/seo.ts`), and
 reachable** (goal 3's last clause — the exact `curl` for it is in the
 runbook).
 
-*One thing found in passing, not fixed.* Before the `db reset`, the local
-`projects` bucket held **10 orphaned objects** left by earlier E2E runs —
-files whose owning rows no longer exist. Deleting a project cascades its
-`project_media` rows but leaves the underlying Storage objects, and nothing
-reaps them. Harmless locally and cleared by the reset, but it is a real
-long-term behaviour worth knowing about on a production project; recorded in
-docs/deployment.md's "Routine maintenance" and docs/development.md's FUTURE
-WORK.
+*One thing found in passing.* **[Superseded — see the Phase 25 follow-up
+entry at the end of this file. The diagnosis below is wrong: the delete path
+was fine, and the real cause was on the *create* path.]** Deleting a project
+cascades its `project_media` rows but leaves the underlying Storage objects,
+and nothing reaps them. Two separate observations pinned this down: before the `db
+reset`, the local `projects` bucket held 10 orphaned objects from earlier
+runs; and after the final green E2E run it held exactly 2 more — one per
+browser project, because `tests/e2e/owner-journey.spec.ts` uploads a real
+file and its `afterAll` deletes the row but not the object. So **every full
+`npm run test:e2e` leaks 2 Storage objects locally**, and the same mechanism
+applies to a real deletion in production. Cleaned up by hand here
+(`storage.objects` is back to 0), and recorded in docs/deployment.md's
+"Routine maintenance" and docs/development.md's FUTURE WORK. Not fixed
+because the fix belongs in the uploader/delete path, not in a launch phase.
+
+---
+
+**Phase 25 follow-up — the Storage orphan bug, properly diagnosed and fixed.**
+The Phase 25 entry above recorded orphaned Storage objects as a known,
+unfixed behaviour and blamed the cascade: "deleting a project cascades its
+`project_media` rows but leaves the underlying Storage objects." **That
+diagnosis was wrong**, and the real cause is worth reading before touching
+any `createX` action.
+
+*What was actually happening.* `deleteStorageFolder(bucket, recordId)` has
+existed since Phase 18 and every entity's `deleteX` action already called it
+— the delete path was fine. The break was on the **create** path. Uploads on
+a create form happen before the row exists, so `<Entity>Form` generates a
+placeholder id (`useState(() => crypto.randomUUID())`) and uploads to
+`{bucket}/{placeholder}/…`. The insert then let Postgres generate its *own*
+id via `gen_random_uuid()`, and nothing ever reconciled the two. So the row
+owned folder `{bucket}/{realId}/`, which had never held anything, while its
+files sat in `{bucket}/{placeholder}/` — referenced by a perfectly valid
+`file_url`, rendering perfectly, and unreachable by any delete forever.
+
+**Every record ever created with an image attached before its first save
+orphaned that image.** It is invisible from the UI (the picture shows), from
+the database (the URL resolves), and from the source (the delete call is
+right there). The only way to see it is to count objects in a bucket before
+and after a delete.
+
+*The fix.* `resolveNewRecordId`/`withRecordId` in `lib/actions/shared.ts`:
+the client's placeholder id is now passed to the create action and inserted
+as the row's primary key, so the folder a file was uploaded to *is* the
+folder the record owns, from the first byte. That removes the mismatch at
+the source rather than reconciling it afterwards — no move step, nothing to
+keep in sync, one code path for create and edit. A malformed or absent id
+falls back to the column default, so a caller without one still works.
+
+Letting the client pick a primary key is safe here and the helper's comment
+says why: the caller is an authenticated admin, RLS independently requires
+`is_admin()` on the insert, and a deliberate collision just produces the
+unique-violation error every create action already handles.
+
+Seven create actions and their forms now pass it: achievements, blog,
+certifications, education, experience, projects, resumes. **`createX` takes
+the record id as its first argument** — the same shape `updateX` already had.
+
+*A second, unrelated gap found while auditing.* `deleteBlogPost` never called
+`deleteStorageFolder` at all. Blog posts own a cover image and a `blog`
+bucket; the call was simply missing. It produced no visible damage only
+because the public blog doesn't exist yet, so almost no post has ever been
+created, let alone deleted. Fixed.
+
+*A third: the E2E suite was leaking on every run.* `deleteTestProjects()`
+deletes rows straight through PostgREST — deliberately, since routing fixture
+cleanup through `deleteProject` would make setup depend on an action some
+tests assert about — which also means it skips `deleteStorageFolder`. Measured
+result: `storage.objects` went 0 → 2 across one full run, one per browser
+project. The helper now clears the folder explicitly, reading the ids before
+the delete since afterwards there is nothing to look them up by.
+
+*The regression test, and proof it works.* `tests/e2e/storage-cleanup.spec.ts`
+covers both orderings (upload during create, which was broken; upload during
+edit, which worked and must keep working) and deletes through the **real
+admin UI**, not through `deleteTestProjects()` — that helper now sweeps
+Storage itself, which would make the assertions pass whether or not
+`deleteProject` reclaims anything.
+
+**It was verified to fail against the old code**, not merely to pass against
+the new: reverting the one-line insert and rebuilding produced exactly the
+right failure — row id `15d69593-…`, file under `e5f058ab-…`. The fix was
+then restored and both tests pass.
+
+Two wrong "upload finished" signals were tried first, and the file records
+both because both look correct:
+
+1. Waiting for an `img` whose `src` is a Storage URL **never resolves** — an
+   `ImageUploader`'s thumbnail stays the local `blob:` preview for the
+   component's entire life. (It works in owner-journey.spec.ts only because
+   the *gallery* is a different component that does render the real URL.)
+2. Waiting for the Replace button — rendered exactly when
+   `!isUploading && displayUrl` — resolves **too early**. The test clicked
+   Create before `onChange(result.url)` reached react-hook-form, and the
+   project saved with a null `logo_url` while the file sat in Storage. That
+   failure is indistinguishable from the orphan bug itself, which is exactly
+   why it is worth knowing about.
+
+The working signal is the "Image uploaded." toast, emitted on the line
+immediately after `onChange`.
+
+*Draining the existing pool.* The fix stops new orphans; it does nothing for
+files already stranded, which no delete will ever reach. `npm run
+storage:orphans` (`scripts/sweep-orphans.ts`) reports Storage objects that no
+content row references, and removes them only with `--delete`. "Orphan" is
+decided conservatively and from the content side: it reads **every column of
+every table** and stringifies the rows wholesale (so URLs nested in `jsonb`,
+like `site_settings.primary_nav`, are caught), then flags an object only if
+its `bucket/path` appears nowhere. A file column added later is therefore
+covered automatically, and the failure mode of an unknown column is *keeping*
+a genuine orphan rather than deleting a live file. Verified both ways
+locally: it found and removed real orphans, and reported zero while the
+regression test's referenced objects were present.
+
+It stays useful after the fix, for the one case no delete path can catch: an
+upload that succeeds and is then abandoned, because the admin replaced the
+image before saving or closed a half-filled create form.
+
+*Docs corrected.* content-management.md's "Uploads and storage cleanup" now
+describes the primary-key scheme and the bug it replaced;
+development.md's FUTURE WORK entry no longer claims deletes leak, and its
+gotchas list gained both the `createX(recordId, …)` rule and the
+`blob:`-preview trap; deployment.md's "Routine maintenance" points at the
+sweep instead of describing an unfixable problem; scripts/README.md documents
+the new script.

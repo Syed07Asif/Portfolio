@@ -613,17 +613,35 @@ Action round trip is needed just to move file bytes.
 
 A record that doesn't exist yet (the create form, before Submit) still
 needs somewhere to put an uploaded file — `<Entity>Form` generates a
-stable client-side placeholder id (`useState(() => crypto.randomUUID())`)
-and passes that as `recordId` until a real row exists, at which point
-editing uses the row's real id instead. This placeholder is only ever
-used as a Storage folder name, never rendered into the DOM, so it doesn't
-need to match between server and client render passes.
+stable client-side id (`useState(() => crypto.randomUUID())`) and passes
+that as `recordId` until a real row exists, at which point editing uses the
+row's real id instead.
+
+**That id is then passed to the `createX` action and inserted as the new
+row's primary key** (`resolveNewRecordId` in
+[lib/actions/shared.ts](../lib/actions/shared.ts)), which is what makes the
+whole scheme hold together. It did not always work that way, and the
+difference is worth stating because the failure was completely silent:
+originally the insert let Postgres generate its own id, so a file uploaded
+*before the first save* lived under a folder the record never owned. The
+row's `file_url` still pointed at that folder, so the image rendered fine
+and the admin panel looked correct — but `deleteStorageFolder(bucket, id)`
+looked somewhere else, and the file survived the record's deletion forever.
+Phase 25 found it by counting objects in a bucket before and after a delete,
+which is the only place it was ever visible.
+`tests/e2e/storage-cleanup.spec.ts` is the regression test, and it fails
+against the old behaviour.
 
 The uploaders' own "remove" action (as opposed to deleting the whole
 record) also attempts an immediate delete of just that one object —
 recovering its storage path from the public URL (`extractStoragePath`) —
 but treats failure as non-fatal, since `deleteStorageFolder` is the real
 backstop the moment the record is eventually deleted regardless.
+
+Files that no record references any more — stranded by that old behaviour,
+or uploaded and then abandoned before a first save — are found by
+`npm run storage:orphans`, which reports them and removes them only with
+`--delete`. See [scripts/README.md](../scripts/README.md).
 
 **Duplicating a record never duplicates its files** — a copy would
 otherwise reference the *original* record's storage folder, silently

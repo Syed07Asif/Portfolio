@@ -55,7 +55,7 @@ export function BlogPostForm({ post, defaultDisplayOrder }: BlogPostFormProps) {
   const { form, isPending, onValid } = useAdminForm({
     schema: blogPostSchema,
     defaultValues,
-    onSubmit: (values) => (post ? updateBlogPost(post.id, values) : createBlogPost(values)),
+    onSubmit: (values) => (post ? updateBlogPost(post.id, values) : createBlogPost(recordId, values)),
     successMessage: post ? "Post updated." : "Post created.",
     redirectTo: "/admin/blog",
   });

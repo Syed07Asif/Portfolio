@@ -88,7 +88,7 @@ export function ProjectForm({ project, defaultDisplayOrder, technologySuggestion
   const { form, isPending, onValid } = useAdminForm({
     schema: projectFormSchema,
     defaultValues,
-    onSubmit: (values) => (project ? updateProject(project.id, values) : createProject(values)),
+    onSubmit: (values) => (project ? updateProject(project.id, values) : createProject(recordId, values)),
     successMessage: project ? "Project updated." : "Project created.",
     redirectTo: "/admin/projects",
   });
