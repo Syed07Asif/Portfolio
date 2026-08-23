@@ -1,6 +1,10 @@
 import { redirect } from "next/navigation";
 import { getActiveResume, tolerateUnavailable } from "@/lib/data";
 import { RESUME_DOWNLOAD_FILENAME } from "@/lib/constants";
+// Same resolved origin the rest of the site uses, so an empty or malformed
+// NEXT_PUBLIC_SITE_URL degrades here exactly as it does everywhere else
+// rather than throwing mid-request. See lib/seo.ts.
+import { SITE_URL } from "@/lib/seo";
 
 /**
  * The stable, never-changing public resume URL — see RESUME_ROUTE's own
@@ -42,7 +46,7 @@ export async function GET() {
   // way) actually passes through.
 
   const fileUrl = resume.file_url.startsWith("/")
-    ? new URL(resume.file_url, process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000")
+    ? new URL(resume.file_url, SITE_URL)
     : resume.file_url;
 
   const upstream = await fetch(fileUrl);

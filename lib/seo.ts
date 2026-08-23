@@ -15,13 +15,54 @@ import type { Metadata } from "next";
  * words in it.
  */
 
+/** Used whenever NEXT_PUBLIC_SITE_URL is absent or unusable, so a build never depends on it being set. */
+export const FALLBACK_SITE_URL = "http://localhost:3000";
+
 /**
  * The public origin, normalised without a trailing slash. Falls back to
  * localhost so `next build` and local dev work without the env var set;
  * production must set NEXT_PUBLIC_SITE_URL or every canonical/OG URL will
  * point at localhost (see docs/deployment.md).
+ *
+ * ## Why this is defensive rather than a one-line `??`
+ *
+ * It used to be `process.env.NEXT_PUBLIC_SITE_URL ?? FALLBACK`, which is
+ * wrong in a way that only shows up on a real host: `??` falls back on
+ * `null`/`undefined` but **not** on `""`. A variable that exists with an
+ * empty value — trivially easy to create in a Vercel dashboard, and the
+ * default state of a variable someone added before knowing the URL —
+ * therefore sailed through, and `new URL("")` threw `ERR_INVALID_URL`
+ * during static generation. The build failed with `Failed to collect page
+ * data for /_not-found`, which names a route that has nothing to do with
+ * the cause.
+ *
+ * A malformed value (`example.com` with no scheme, a stray quote) failed
+ * the same opaque way. Both are now treated as "not set": the build keeps
+ * working and the fallback makes the misconfiguration visible in the
+ * output — canonical URLs saying `localhost` is a loud, obvious symptom,
+ * where a crashed build named the wrong file.
  */
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+function resolveSiteUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (!raw) return FALLBACK_SITE_URL;
+
+  const normalised = raw.replace(/\/+$/, "");
+  try {
+    // Throws on anything URL() can't parse, including a bare hostname.
+    new URL(normalised);
+    return normalised;
+  } catch {
+    console.warn(
+      `[lib/seo] NEXT_PUBLIC_SITE_URL is set to ${JSON.stringify(raw)}, which is not a valid ` +
+        `absolute URL. Falling back to ${FALLBACK_SITE_URL}. Canonical URLs, sitemap entries ` +
+        `and Open Graph images will all be wrong until this is fixed — it needs a scheme, ` +
+        `e.g. https://example.com`,
+    );
+    return FALLBACK_SITE_URL;
+  }
+}
+
+export const SITE_URL = resolveSiteUrl();
 
 /** `metadataBase` for the root layout — also what `absoluteUrl` resolves against. */
 export const METADATA_BASE = new URL(SITE_URL);
