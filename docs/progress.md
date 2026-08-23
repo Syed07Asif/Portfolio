@@ -91,7 +91,15 @@ recreating that admin account afterward. This bit Phase 21.
 
 ## Where things stand
 
-> **Phases 1-25 are complete. Phase 25 was the final phase.** The codebase is
+> **Phases 1-25 are complete, and the site is DEPLOYED and live** at
+> `https://portfolio-ten-brown-24v11dmo3j.vercel.app` (Supabase project
+> `atujfnmfrftftnkjivzy`). See the deployment entry at the very end of this
+> file for what was done and the three real problems it surfaced; live
+> details are in [docs/deployment.md](./deployment.md#the-live-deployment).
+> **The database is empty** — what remains is entering content through the
+> admin panel, not engineering. Latest release tag is `v1.0.2`.
+>
+> *(Historical, from before the deploy:)* The codebase is
 > release-ready and tagged `v1.0.0` on `main`. **It is not deployed.**
 > Everything that needs Syed's own Vercel / Supabase / registrar accounts —
 > creating the hosted Supabase project, connecting Vercel, the custom domain,
@@ -3298,3 +3306,73 @@ gotchas list gained both the `createX(recordId, …)` rule and the
 `blob:`-preview trap; deployment.md's "Routine maintenance" points at the
 sweep instead of describing an unfixable problem; scripts/README.md documents
 the new script.
+
+---
+
+**Deployment — the site is live.** Phase 25 left goals 2, 3, 4 and 6 as an
+unexecuted runbook because they need accounts. They have now been executed,
+walking the owner through it step by step. Live details (URL, project ref,
+region) are recorded in [docs/deployment.md](./deployment.md#the-live-deployment)
+so nobody has to dig through a dashboard for them.
+
+Done, in order: hosted Supabase project created and all five migrations
+pushed (verified from here — **15/15 tables with RLS**, 29 table policies, 9
+buckets, 4 storage policies, `set_active_resume` present, `service_role`
+grants working, and **no seed data**, which `db push` correctly does not
+run); Vercel connected to `main` with the four env vars; the admin account
+created and granted; `NEXT_PUBLIC_SITE_URL` set and verified. `/styleguide`
+correctly 404s in production, `robots.txt` disallows the right paths, and all
+six security headers are present with `upgrade-insecure-requests` now active
+(it and HSTS are `https:`-gated, so they only appear once the site really is
+https — exactly as designed).
+
+**Three real problems surfaced, each fixed at the source:**
+
+1. **The first production build failed** with `ERR_INVALID_URL` and
+   `Failed to collect page data for /_not-found`. `lib/seo.ts` used
+   `process.env.NEXT_PUBLIC_SITE_URL ?? FALLBACK`, and **`??` does not fall
+   back on `""`** — an env var that exists but is blank (the natural state of
+   one added before the domain is known) sailed through into `new URL("")`.
+   The error named a route with nothing to do with the cause. Fixed in
+   `v1.0.2`: empty, whitespace and unparseable values all degrade to the
+   fallback, with a warning for the malformed case. `tests/lib/seo.test.ts`
+   covers all six cases; reproduced with a real `next build` before the fix
+   and confirmed passing after. 60 unit tests, up from 52.
+
+2. **The admin invite flow cannot work in this app**, and docs/deployment.md
+   recommended it. `app/admin/` has exactly one auth route — `login/`, a
+   plain password form. There is no auth callback and no set-password page,
+   so an invite link has nowhere to land: it redirects to Supabase's Site URL
+   (`localhost:3000` by default), burns the token, and reports `otp_expired`.
+   **Send password recovery has the same problem.** The doc now warns about
+   both and documents *Add user → Create new user* with **Auto Confirm**
+   ticked. Worth knowing: password changes for this site happen in the
+   Supabase dashboard, not by email. Building a real reset flow (an auth
+   callback route plus a set-password page) is a small, genuinely optional
+   feature — see FUTURE WORK if it is ever wanted.
+
+3. **`portfolio-ten-brown.vercel.app` belongs to somebody else.** It was
+   inferred to be the production alias because it answered HTTP 200, and it
+   reached `NEXT_PUBLIC_SITE_URL`, Supabase's Site URL, and one deploy's
+   canonical/`og:url` tags before the page *content* was actually read and
+   found to be a stranger's portfolio. Corrected to
+   `portfolio-ten-brown-24v11dmo3j.vercel.app`, verified by content. **A 200
+   from a guessed hostname proves nothing** — read the domain from Vercel's
+   Settings → Domains.
+
+Two verification lessons also recorded in deployment.md: polling a fresh
+deploy ~40 times in ten minutes trips Vercel's bot protection
+(`X-Vercel-Mitigated: challenge`, everything 403s to scripts while browsers
+pass transparently), and immediately after a deploy the edge can still serve
+the *previous* build's `canonical`/`og:url`/`sitemap.xml` while `robots.txt`
+already shows the new ones — indistinguishable from a half-applied env var
+until you re-fetch with `{cache: 'reload'}` and a query buster.
+
+**What remains is content, not engineering.** The database is empty, so the
+site renders its fallbacks (the tab title reads "Portfolio" from
+`DEFAULT_WORDMARK` rather than a name). Everything from here is admin-panel
+work: Profile, Settings, Contact, Experience, Education, Skills, Projects,
+Resume. The remaining smoke-test items — a published project reachable
+publicly, Storage images loading, the resume downloading, an *unpublished*
+project provably unreachable, and OG cards rendering — all need real content
+before they can mean anything.
