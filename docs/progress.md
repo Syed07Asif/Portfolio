@@ -129,8 +129,9 @@ homepage mobile LCP (3,340ms against 2,500ms)**; it is now bandwidth-bound,
 and the only remaining lever is an architectural decision about Framer
 Motion that belongs to the owner. **The admin panel is complete** — every
 sidebar destination is now a real editor; no `ComingSoon` placeholder pages
-remain (`components/admin/ComingSoon.tsx` itself is now unused and could be
-deleted whenever someone is tidying). Phase 21's own log entry below has the
+remain (`components/admin/ComingSoon.tsx` itself was deleted after Phase 25,
+having been unused since Phase 21 — it is in git history if it is ever
+wanted back). Phase 21's own log entry below has the
 full narrative, including two real bugs found live.
 
 **Phase 22 (SEO and social sharing) is done and verified** — per-route
@@ -3009,9 +3010,10 @@ What's left:
   Projects already models (it's the closest precedent, being the only other
   entity with its own detail route). See content-management.md's
   cache-invalidation table, which spells out exactly what to add.
-- **Optional tidying**: `components/admin/ComingSoon.tsx` is now unused,
-  and `MultiImageUploader` still has no real entity behind it (see
-  content-management.md's "Known gaps, by design").
+- **Optional tidying**: `MultiImageUploader` still has no real entity behind
+  it (see content-management.md's "Known gaps, by design").
+  `components/admin/ComingSoon.tsx` was on this list too and has since been
+  deleted.
 
 When the next prompt arrives, update this file's "Where things stand" and
 add a new phase-log entry the same way the ones above are written: what got
@@ -3281,6 +3283,13 @@ regression test's referenced objects were present.
 It stays useful after the fix, for the one case no delete path can catch: an
 upload that succeeds and is then abandoned, because the admin replaced the
 image before saving or closed a half-filled create form.
+
+*Released as `v1.0.1`.* The fix commit is `0c12dd4` on `develop`, merged to
+`main` as `98c20b2` and tagged **`v1.0.1`**, both pushed. `main` and
+`develop` are identical again. Upgrading from `v1.0.0` needs no migration and
+no config change — but if `v1.0.0` ever ran against a real project, run
+`npm run storage:orphans` once to see what it stranded and again with
+`--delete` to reclaim it.
 
 *Docs corrected.* content-management.md's "Uploads and storage cleanup" now
 describes the primary-key scheme and the bug it replaced;

@@ -489,5 +489,3 @@ being careful about.
 - **A second Supabase project for Preview.** See
   [docs/deployment.md](./deployment.md#one-supabase-project-or-two) for when
   this stops being optional.
-- **`components/admin/ComingSoon.tsx`** is now unused — every sidebar
-  destination is a real editor. Delete it whenever someone is tidying.
