@@ -375,15 +375,37 @@ This has to be done manually per Supabase project (dev and prod have separate
 It is an operational step, not something a migration or `seed.sql` can do,
 since a real UUID doesn't exist until the account is created.
 
+### Do not use the invite flow
+
+**This app has no invite-acceptance page**, and finding that out the hard way
+cost a step during the real deployment. `app/admin/` contains exactly one
+auth route — `login/`, a plain email-and-password form. There is no auth
+callback, no "set your password" screen, and no password-reset page, because
+Phase 17 deliberately built the minimum for a single known administrator.
+
+So an invite email has nowhere to land. The link redirects to whatever
+Supabase's **Site URL** setting says (`http://localhost:3000` by default,
+which fails outright on a machine with no dev server running), the token is
+consumed, and the next click reports `otp_expired`. The same is true of
+**Send password recovery** — the email sends, but the link has no destination
+in this app.
+
+Manage the password from the dashboard instead. For one admin that is
+strictly simpler than the flows it replaces, and it is the documented
+approach below.
+
 ### Creating the admin account
 
-1. Supabase dashboard → **Authentication → Users → Add user → Invite user**,
-   and invite Syed Asif's real email address. This sends an email letting him
-   set his own password — nobody else (including whoever runs this step) ever
-   needs to know it. (`supabase.auth.admin.inviteUserByEmail()` via the Admin
-   API does the same thing from a script.)
-2. Once accepted, copy the new user's `id` (a UUID) from the Users table.
-3. In the SQL editor for that same project:
+1. First fix **Authentication → URL Configuration**, even though the steps
+   below don't depend on it: set **Site URL** to the production origin and
+   add it under **Redirect URLs**. Left at `localhost:3000`, any auth email
+   the dashboard sends points at a machine that isn't listening.
+2. **Authentication → Users → Add user → Create new user**. Enter the real
+   email address, set a password, and tick **Auto Confirm User** — without
+   that the account exists but cannot sign in, and the failure looks
+   identical to a wrong password.
+3. Copy the new user's `id` (a UUID) from the Users table.
+4. In the SQL editor for that same project:
 
    ```sql
    insert into private.admins (user_id) values ('<uuid-from-step-2>');
@@ -400,10 +422,12 @@ since a real UUID doesn't exist until the account is created.
 ### Rotating
 
 - **Password reset:** dashboard → Authentication → Users → select the user →
-  **Send password recovery**. No change to `private.admins` — the `user_id`
-  doesn't change.
+  **Reset password**, and set the new one there. No change to
+  `private.admins` — the `user_id` doesn't change. Do **not** use *Send
+  password recovery*: the email arrives, but this app has no page for its
+  link to land on (see above).
 - **Replacing the account entirely** (new email address): create the new user
-  via the same invite flow, insert its `user_id` into `private.admins`,
+  the same way as above, insert its `user_id` into `private.admins`,
   confirm access works, *then* remove the old row:
 
   ```sql
