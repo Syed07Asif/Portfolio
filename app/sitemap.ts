@@ -6,7 +6,10 @@ import { absoluteUrl } from "@/lib/seo";
  * Matches the project detail route's own `revalidate`, so a project
  * published after the last build shows up in the sitemap within the same
  * hour it starts rendering — and, because `lib/data/sitemap.ts` tags its
- * reads, immediately when the admin panel revalidates the projects tag.
+ * reads. Note the admin panel must revalidate this *path* as well as the
+ * projects tag to refresh it promptly — busting the tag alone only
+ * invalidates the data, not this route's own rendered output. See
+ * `revalidateProject` in lib/actions/projects.ts.
  */
 export const revalidate = 3600;
 
