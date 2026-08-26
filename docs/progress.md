@@ -96,8 +96,11 @@ recreating that admin account afterward. This bit Phase 21.
 > `atujfnmfrftftnkjivzy`). See the deployment entry at the very end of this
 > file for what was done and the three real problems it surfaced; live
 > details are in [docs/deployment.md](./deployment.md#the-live-deployment).
-> **The database is empty** — what remains is entering content through the
-> admin panel, not engineering. Latest release tag is `v1.0.2`.
+> Real content is in (projects, profile, resume) and a full **post-launch
+> smoke test has passed**, including the unpublished-content check against a
+> real draft — see the final entry in this file for the two defects it found
+> and the three measurement traps it hit. Latest release tag is `v1.0.3`.
+> **`site_settings` still has no row**, so the homepage has no `og:image`.
 >
 > *(Historical, from before the deploy:)* The codebase is
 > release-ready and tagged `v1.0.0` on `main`. **It is not deployed.**
@@ -3376,3 +3379,59 @@ Resume. The remaining smoke-test items — a published project reachable
 publicly, Storage images loading, the resume downloading, an *unpublished*
 project provably unreachable, and OG cards rendering — all need real content
 before they can mean anything.
+
+---
+
+**Post-launch smoke test, and two defects it found (`v1.0.3`).** Run against
+the live site with real content in it (2 projects, profile, active resume, 15
+Storage objects). Passing: homepage with real content, both project pages,
+the projects index, the resume download (331KB `application/pdf` with the
+forced filename), every Storage image URL (200, correct content types), the
+generated OG cards (real ~98KB PNGs), JSON-LD (`CreativeWork` /
+`SoftwareSourceCode` + `Person` + `BreadcrumbList`), canonical URLs, all six
+security headers, and `/definitely-not-a-page` → 404.
+
+**The unpublished-content check passed properly**, tested with a real draft
+rather than reasoned about: its own URL 404s, the display name and any `<h1>`
+are absent from the HTML, and it appears on neither the index, the homepage,
+nor the sitemap. An unpublished slug and a nonexistent one now return
+byte-identical responses, so the URL space cannot be probed for hidden work.
+
+**Two defects, both invisible from the code and from the UI:**
+
+1. **`/projects/<unknown>` answered `200`, not `404`** — a soft 404.
+   `app/(site)/projects/[slug]/loading.tsx` wrapped the segment in a Suspense
+   boundary, so Next *streamed* the response and flushed the status line
+   before the page function — and therefore before `notFound()` — had run.
+   The 404 survived only as `<template
+   data-dgst="NEXT_HTTP_ERROR_FALLBACK;404">` in the body. Visitors saw the
+   right page; crawlers saw `200 OK` for a page that does not exist. Deleting
+   that one file makes Next await the component before flushing. The skeleton
+   is the only loss, and it barely showed — published slugs are prerendered
+   and then ISR-cached for an hour. **page.tsx now warns against re-adding
+   it**, because nothing in the UI reveals the regression.
+
+2. **Publishing a project did not refresh `sitemap.xml`.**
+   `revalidateProject` busted the projects *tag*, which invalidates the data
+   the sitemap reads but not the route's own ISR output — that has its own
+   `revalidate = 3600`. Production was serving a sitemap listing neither
+   project with a `lastmod` predating both. `app/sitemap.ts`'s comment had
+   claimed the tag alone was enough. Fixed with
+   `revalidatePath("/sitemap.xml")`, and the comment corrected.
+
+**Three measurement traps worth remembering**, each of which produced a
+convincing false result before being run down:
+
+- **Lazy images read as broken.** All seven homepage images reported
+  `complete: false, naturalWidth: 0`. They were `loading="lazy"` in a browser
+  pane that was not compositing frames, so they never started. Every URL
+  fetched 200 with a correct image content type. **Fetch the URL; don't trust
+  `naturalWidth` in a headless/hidden context.**
+- **`w=3840` in an `img` `src` is not an over-fetch.** Next puts the largest
+  candidate in `src` as the no-`srcset` fallback; the browser picks from
+  `srcset` using `sizes`, which were correct. Nearly reported as a
+  performance bug.
+- **Substring matching on a slug is not a leak test.** `/SignMind/i` matched
+  the *slug* `signmind-x` inside OG-card URLs and the router payload on a
+  page that contained no project content at all. Match the display name, and
+  check `<h1>`/`<title>`, before concluding anything leaked.
