@@ -3,15 +3,32 @@ import { getHomepageLastModified, getProjectSitemapEntries, tolerateUnavailable 
 import { absoluteUrl } from "@/lib/seo";
 
 /**
- * Matches the project detail route's own `revalidate`, so a project
- * published after the last build shows up in the sitemap within the same
- * hour it starts rendering — and, because `lib/data/sitemap.ts` tags its
- * reads. Note the admin panel must revalidate this *path* as well as the
- * projects tag to refresh it promptly — busting the tag alone only
- * invalidates the data, not this route's own rendered output. See
- * `revalidateProject` in lib/actions/projects.ts.
+ * Rendered per request — deliberately, and this took two attempts to get
+ * right.
+ *
+ * The route used to carry `export const revalidate = 3600`, on the reasoning
+ * that an hour-stale sitemap is harmless. It is worse than that: the *route*
+ * cache is separate from the *data* cache, so `updateTag(CACHE_TAGS.projects)`
+ * — which the admin panel fires on every publish — invalidated the query
+ * underneath this file while the already-rendered XML kept being served. A
+ * newly published project stayed missing from the sitemap for up to an hour
+ * no matter what the admin did.
+ *
+ * The first fix added `revalidatePath("/sitemap.xml")` to the publish action.
+ * **That does not work** — verified against production by toggling a real
+ * project off and on and watching the sitemap stay unchanged (`x-vercel-cache:
+ * HIT`, no new entry, while the row's `updated_at` proved the action had run
+ * 46 seconds earlier). `revalidatePath` does not reach Next's metadata
+ * routes.
+ *
+ * So the route opts out of caching entirely instead. That sounds expensive
+ * and isn't: every read below goes through `lib/data`'s `unstable_cache`
+ * wrappers, which *are* tag-invalidated, so a request here costs a
+ * cache lookup rather than a database round trip until a publish busts the
+ * tag. Crawlers fetch this file rarely, and a sitemap's whole job is to be
+ * current.
  */
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 /**
  * Every publicly indexable URL, derived entirely from the database — adding
