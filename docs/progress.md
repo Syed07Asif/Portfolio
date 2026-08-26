@@ -99,8 +99,11 @@ recreating that admin account afterward. This bit Phase 21.
 > Real content is in (projects, profile, resume) and a full **post-launch
 > smoke test has passed**, including the unpublished-content check against a
 > real draft — see the final entry in this file for the two defects it found
-> and the three measurement traps it hit. Latest release tag is `v1.0.3`.
-> **`site_settings` still has no row**, so the homepage has no `og:image`.
+> and the three measurement traps it hit. Latest release tag is `v1.0.4`.
+> Content and Settings are filled in, backups have been taken and validated,
+> and the final entry records the two-attempt sitemap fix (`revalidatePath`
+> does not reach metadata routes). **The build is finished and the site is
+> fully live** — what remains is ordinary content editing.
 >
 > *(Historical, from before the deploy:)* The codebase is
 > release-ready and tagged `v1.0.0` on `main`. **It is not deployed.**
@@ -3435,3 +3438,42 @@ convincing false result before being run down:
   the *slug* `signmind-x` inside OG-card URLs and the router payload on a
   page that contained no project content at all. Match the display name, and
   check `<h1>`/`<title>`, before concluding anything leaked.
+
+---
+
+**The sitemap fix took two attempts — the first one silently did nothing
+(`v1.0.3` → `v1.0.4`).** Worth recording because the wrong fix looked
+entirely reasonable and shipped green.
+
+`v1.0.3` added `revalidatePath("/sitemap.xml")` to `revalidateProject`.
+**`revalidatePath` does not reach Next's metadata routes**, so the call was a
+no-op. Nothing about the build, the types or the tests could have caught it;
+it was only found by toggling a real project off and on through the admin UI
+and watching production. The row's `updated_at` was 46 seconds old — the
+action had certainly run — while `/sitemap.xml` still answered
+`x-vercel-cache: HIT` with the project absent.
+
+The real problem was that `app/sitemap.ts` had `export const revalidate =
+3600` at all. **A route cache and a data cache are different things**:
+`updateTag(CACHE_TAGS.projects)` invalidated the query the sitemap reads,
+while the already-rendered XML kept being served for up to an hour
+regardless. The route is now `force-dynamic`, so the existing `updateTag` is
+sufficient — it re-renders per request against the data cache the tag just
+invalidated. Cost is near zero: every read goes through `lib/data`'s
+`unstable_cache` wrappers, so a request is a cache lookup rather than a
+database round trip until a publish busts the tag. The build output confirms
+it, `/sitemap.xml` moving from `○ (Static)` to `ƒ (Dynamic)`.
+
+Verified live: the sitemap now lists both projects with `x-vercel-cache:
+MISS`, `age: 0`. Both files carry a note that `revalidatePath` was tried here
+and does not work, so it doesn't get re-added.
+
+**Final production state, all re-verified after `v1.0.4`:** homepage 200 with
+the real title and an `og:image`; both project pages 200 with correct `<h1>`s;
+the projects index listing both; an unknown slug 404; the resume streaming
+`application/pdf`; `site_settings` populated (title, meta description, OG
+image); and content plus media backups taken and validated (47 rows across 15
+tables, 17 objects / 17MB across 9 buckets). The backup lives in `backups/`,
+which is git-ignored but inside the OneDrive-synced project folder, so it has
+an offsite copy — which matters, because the Supabase free plan has no
+automatic backups.
