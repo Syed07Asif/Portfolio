@@ -36,6 +36,34 @@ interface ProjectPageProps {
 export const revalidate = 3600;
 
 /**
+ * ## Why this segment deliberately has no `loading.tsx`
+ *
+ * It had one until Phase 25 tested the deployed site and found that
+ * `/projects/<anything-made-up>` answered **HTTP 200** instead of 404.
+ *
+ * A `loading.tsx` wraps its segment in a Suspense boundary, which makes Next
+ * *stream* the response: the shell is flushed — status line and all — before
+ * the page function has finished, and therefore before `notFound()` below has
+ * run. By the time the 404 is known the headers are long gone, so Next can
+ * only mark it in the body, as
+ * `<template data-dgst="NEXT_HTTP_ERROR_FALLBACK;404">`. Visitors saw the
+ * right page; crawlers saw `200 OK` on a page that does not exist, which is
+ * a soft 404 and exactly what Google penalises.
+ *
+ * Removing the file makes Next await this component before flushing, so the
+ * real status is sent. The cost is the skeleton, and it is small: published
+ * slugs are prerendered by `generateStaticParams` and then ISR-cached for an
+ * hour, so the streamed shell was only ever visible on a cold miss.
+ *
+ * Client-side navigation from a project card still gets a Suspense fallback —
+ * `app/(site)/projects/(index)/loading.tsx` covers the index, and React holds
+ * the previous page during the transition rather than showing a blank.
+ *
+ * **Do not re-add a `loading.tsx` here** without re-checking the status code
+ * of a nonexistent slug; the regression is completely invisible in the UI.
+ */
+
+/**
  * Tolerated deliberately: an unreachable database at *build* time must not
  * fail the deploy. `dynamicParams` is left at its default, so any slug that
  * wasn't prerendered still renders on first request once the database is

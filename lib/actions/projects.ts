@@ -33,6 +33,15 @@ function revalidateProject(slugs: Array<string | null | undefined> = []) {
   updateTag(CACHE_TAGS.projects);
   revalidatePath("/");
   revalidatePath("/projects");
+  // The sitemap route is ISR-cached with its own `revalidate = 3600`, so
+  // `updateTag` alone does not refresh it: that invalidates the *data* the
+  // route reads, while the already-rendered XML keeps being served for up to
+  // an hour. app/sitemap.ts's own comment claimed a project would appear
+  // "immediately when the admin panel revalidates the projects tag" — Phase
+  // 25 checked against production and found a sitemap listing neither
+  // project, with a `lastmod` from before either existed. The route itself
+  // has to be busted too.
+  revalidatePath("/sitemap.xml");
   for (const slug of new Set(slugs.filter((value): value is string => Boolean(value)))) {
     revalidatePath(`/projects/${slug}`);
   }

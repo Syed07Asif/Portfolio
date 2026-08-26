@@ -28,6 +28,40 @@ work.
 
 ---
 
+## The live deployment
+
+Filled in when the site actually went live, so nobody has to go digging in a
+dashboard to answer "what is this pointed at?"
+
+| | |
+| --- | --- |
+| **Production URL** | `https://portfolio-ten-brown-24v11dmo3j.vercel.app` |
+| **Supabase project ref** | `atujfnmfrftftnkjivzy` |
+| **Supabase region** | `ap-southeast-1` (Singapore) |
+| **Postgres** | 17.6 |
+| **Custom domain** | none yet |
+| **Vercel production branch** | `main` |
+
+**The production URL is the awkward one on purpose.** `portfolio-ten-brown.vercel.app`
+— the obvious shorter name — **belongs to a different Vercel user entirely**,
+and briefly ended up in `NEXT_PUBLIC_SITE_URL` because it answered HTTP 200
+to a probe. A 200 from a guessed `*.vercel.app` hostname proves something is
+there, not that it is yours. Read the real domain from **Settings → Domains**
+and check the page content, never infer it from a status code.
+
+Two things to know when verifying a deploy from a script:
+
+- **Vercel rate-limits aggressive polling.** Forty `curl`s in ten minutes
+  from one IP triggered `X-Vercel-Mitigated: challenge`, and every request
+  started returning `403` with a "Vercel Security Checkpoint" page. Real
+  browsers solve it transparently; scripted checks do not. Wait for a build,
+  don't poll it.
+- **Check with cache busting.** Immediately after a deploy, `canonical`,
+  `og:url` and `sitemap.xml` can still serve the previous build's values from
+  the edge/browser cache while `robots.txt` already shows the new ones — which
+  looks exactly like a half-applied env var. `fetch(url, {cache: 'reload'})`
+  with a query-string buster settles it.
+
 ## The shape of a deployment
 
 ```
