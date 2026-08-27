@@ -18,7 +18,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
-import { cn } from "@/lib/utils";
+import { cn, gridColumnsForCount } from "@/lib/utils";
 import type { SkillCategoryWithSkills, SkillWithCategory } from "@/types/content";
 
 /**
@@ -140,21 +140,6 @@ function CategoryCard({ category }: { category: SkillCategoryWithSkills }) {
   );
 }
 
-/**
- * The grid's column count is capped by how many categories there actually
- * are, so the row is always full. Three columns holding two cards left a
- * visibly empty third column on a laptop; with `md:grid-cols-2` those same
- * two cards each take half the width instead. Four categories get two
- * columns for the same reason (three would strand a lone card on row two).
- * This is layout reacting to data volume, not to data *content* — no
- * category name is ever named here.
- */
-function gridColumnsClassName(count: number): string {
-  if (count === 1) return "mx-auto max-w-2xl";
-  if (count === 2 || count === 4) return "md:grid-cols-2";
-  return "md:grid-cols-2 lg:grid-cols-3";
-}
-
 export interface SkillsContentProps {
   categories: SkillCategoryWithSkills[];
 }
@@ -180,7 +165,7 @@ export function SkillsContent({ categories }: SkillsContentProps) {
         // card is its own row, so forcing `1fr` rows there would pad the short
         // ones with dead vertical space and make the reader scroll past it.
         "reveal-group grid grid-cols-1 gap-6 md:auto-rows-fr",
-        gridColumnsClassName(categories.length),
+        gridColumnsForCount(categories.length, "md"),
       )}
     >
       {categories.map((category) => (

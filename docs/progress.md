@@ -22,12 +22,12 @@ phase log is only needed for *why* a decision was made.
 
 | | |
 | --- | --- |
-| **Status** | Live in production. All 25 phases complete. |
+| **Status** | Live in production. All 25 phases complete, plus a post-launch laptop-layout pass. **This is the final state of the portfolio.** |
 | **Live site** | `https://portfolio-ten-brown-24v11dmo3j.vercel.app` |
 | **Admin** | `/admin/login` — real Supabase Auth user, password is in the owner's password manager (not recoverable by email, see below) |
 | **Supabase project** | `atujfnmfrftftnkjivzy` (`ap-southeast-1`, Postgres 17.6, **free plan — no automatic backups**) |
 | **Vercel** | deploys `main` automatically on push |
-| **Latest tag** | `v1.0.5` |
+| **Latest tag** | `v1.0.6` — the final portfolio state |
 | **Branches** | `develop` and `main` in sync, tree clean |
 | **Resume point** | `2a7fdcb` on `develop` — the laptop layout pass (`v1.0.5`), the last entry in this file |
 
@@ -3651,3 +3651,60 @@ and no E2E selector depends on the structures that changed.
 outruns the left column by ~250px (down from ~900px). Closing it completely
 would need either a sticky left column — which would force the facts above
 the bio on mobile — or content that does not exist in the database.
+
+---
+
+## Post-launch: no card grid outgrows its content (`v1.0.6`)
+
+A follow-on to `v1.0.5`, and the same defect one section over. With two
+published projects in a `lg:grid-cols-3` grid, a third of the Projects row
+was blank on a laptop — exactly what the Skills grid had just been fixed for.
+The requirement, in the owner's words: *"if there is only two projects
+published it should expand and cover the empty space"*, and go back to three
+columns once more are added.
+
+So the rule Skills had grown locally moved into `lib/utils.ts` as
+`gridColumnsForCount(count, twoColumnAt)`, and all three card grids —
+Skills, Projects, Certifications — now share it. One card centres at
+`max-w-2xl`; two or four take two columns (four because three would strand a
+lone card on a second row); anything else gets the normal responsive pair.
+The `twoColumnAt` argument exists because the grids genuinely differ: dense
+text cards (Skills) hold off until `md`, cards carrying imagery (Projects,
+Certifications) split at `sm`.
+
+Measured at 1440px: two projects render at 580px each rather than 379px with
+a 379px hole; three render at 379px; four at 580px in a 2x2. At 390px every
+count is one full-width column, unchanged.
+
+**Every branch returns a literal class string**, which is not a style
+preference — Tailwind finds classes by scanning source text, so a
+template-built name like `` `lg:grid-cols-${n}` `` compiles to no CSS at all
+and the grid silently falls back to one column.
+
+**The wide-card look was checked with a real image, not a placeholder.** Two
+cards at 580px make the card's `aspect-square` logo tile 508px tall, and
+against the initials-fallback tile that looked disproportionate enough to
+reconsider the whole approach. Rendering it with an actual project logo
+settled it — the mark fills the tile and the card reads as a deliberate
+feature card. The way to do that locally, since `next.config.ts` derives
+`images.remotePatterns` from `NEXT_PUBLIC_SUPABASE_URL` (the *local* stack,
+which does not hold production's images): a temporary
+`.env.development.local` pointing that variable at the hosted project, which
+Next loads ahead of `.env.local` in dev. Deleted afterwards, along with the
+throwaway route.
+
+### Verified before shipping
+
+Docker was still down, so again no `npm test` / `npm run test:e2e`. What was
+run: `tsc --noEmit`, ESLint, `npm run build`, and — against the *live* site —
+a replay of `tests/e2e/reveal-opacity.spec.ts`'s exact assertion (at least
+120px of the element visible, opacity >= 0.9) at 1440 / 1280 / 800, which
+found **zero** elements resting mid-fade. That mattered because `v1.0.5` had
+added a third `.reveal-group` child to About. Also confirmed live: every key
+route 200, no console errors, and no horizontal overflow at 1440 or 390.
+
+**Left as content, not code** (both are `/admin` edits, noted here so they
+are not mistaken for layout bugs later): the SignMind X project's
+`short_description` is the placeholder string "hi", which shows on its card
+and feeds its meta description; and the GoldMoon experience row has no
+company logo, so its card shows an empty avatar circle.

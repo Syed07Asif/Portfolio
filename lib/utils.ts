@@ -194,3 +194,33 @@ export function formatDuration(start: string, end: string | null, isCurrent = fa
 
   return parts.join(" ");
 }
+
+/**
+ * Tailwind column classes for a card grid, capped by how many cards there
+ * actually are so a row is never left half empty.
+ *
+ * Three columns holding two cards leaves a visibly blank third of the row on
+ * a laptop — the same complaint for the Skills grid and the Projects grid.
+ * Two cards should simply be wider. Four take two columns for the related
+ * reason that three would strand a lone card on a second row. Three or more
+ * (other than four) get the normal responsive pair.
+ *
+ * This reacts to data *volume*, never to data *content* — nothing here knows
+ * what a project or a category is called — so a grid still needs no code
+ * change when a row is added, per CLAUDE.md's core principle. Every branch
+ * returns a literal string because Tailwind finds classes by scanning source
+ * text; a template-built class name would generate no CSS.
+ *
+ * `twoColumnAt` is the breakpoint at which a grid first splits in two, which
+ * differs by card: dense text cards (Skills) hold off until `md`, cards with
+ * imagery (Projects, Certifications) split at `sm`.
+ */
+export function gridColumnsForCount(count: number, twoColumnAt: "sm" | "md" = "sm"): string {
+  if (count === 1) return "mx-auto max-w-2xl";
+
+  if (count === 2 || count === 4) {
+    return twoColumnAt === "md" ? "md:grid-cols-2" : "sm:grid-cols-2";
+  }
+
+  return twoColumnAt === "md" ? "md:grid-cols-2 lg:grid-cols-3" : "sm:grid-cols-2 lg:grid-cols-3";
+}

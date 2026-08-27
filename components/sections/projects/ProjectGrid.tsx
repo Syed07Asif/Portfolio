@@ -1,6 +1,7 @@
 import { FolderKanban } from "lucide-react";
 import { EmptyState } from "@/components/ui";
 import { selectProjects } from "@/lib/projects";
+import { cn, gridColumnsForCount } from "@/lib/utils";
 import { ProjectCard } from "./ProjectCard";
 import type { Project } from "@/types/content";
 
@@ -34,9 +35,7 @@ export function ProjectGrid({ projects, featuredOnly, limit, cardHeadingLevel }:
   }
 
   return (
-    <div
-      className="reveal-group grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
-    >
+    <div className={cn("reveal-group grid grid-cols-1 gap-6", gridColumnsForCount(items.length))}>
       {items.map((project) => (
         <div key={project.id}>
           <ProjectCard project={project} headingLevel={cardHeadingLevel} />
