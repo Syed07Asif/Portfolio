@@ -27,7 +27,7 @@ phase log is only needed for *why* a decision was made.
 | **Admin** | `/admin/login` — real Supabase Auth user, password is in the owner's password manager (not recoverable by email, see below) |
 | **Supabase project** | `atujfnmfrftftnkjivzy` (`ap-southeast-1`, Postgres 17.6, **free plan — no automatic backups**) |
 | **Vercel** | deploys `main` automatically on push |
-| **Latest tag** | `v1.0.4` |
+| **Latest tag** | `v1.0.5` |
 | **Branches** | `develop` and `main` in sync, tree clean |
 | **Resume point** | `038bbc2` on `develop` — the commit this block was written against |
 
@@ -3544,3 +3544,110 @@ tables, 17 objects / 17MB across 9 buckets). The backup lives in `backups/`,
 which is git-ignored but inside the OneDrive-synced project folder, so it has
 an offsite copy — which matters, because the Supabase free plan has no
 automatic backups.
+
+---
+
+## Post-launch: the laptop layout pass (`v1.0.5`)
+
+Not a phase — a round of feedback on the live site. The phone layout was
+fine; the laptop one had three places where the *content* had outgrown the
+*layout* the sections were built with. All three are the same class of bug:
+a shape that looked balanced against placeholder content and hollow against
+real content, which is exactly the kind of thing that only shows up once a
+site has been filled in.
+
+**Experience: the alternating timeline was half empty.** The desktop layout
+put each card on alternating sides of a centred rail, capped at `max-w-lg`,
+which meant every single row rendered one card against an empty half-width
+column. Measured on the live page at a 1280px viewport: each row was 1169px
+wide and carried a ~510px card. With only two entries in the database, that
+reads as an unfinished page rather than as spacing. It is now the
+conventional résumé timeline — a right-aligned date column, the rail, then a
+card taking all the remaining width (905px at the same viewport).
+
+The dates and duration *moved* into that new column rather than being
+duplicated into it; `ExperienceItem` grew a `variant` prop (`"stacked"` for
+the phone copy, `"split"` for the desktop one) so only one copy of the DOM
+ever renders that meta, and a screen reader still hears each entry's dates
+once. Location and employment type move to the far end of the header row so
+a full-width card is anchored at both edges instead of trailing off, and a
+list of 4+ responsibilities splits into two columns.
+
+**The split starts at `lg`, not `md`** — and that was found by looking, not
+by reasoning. At 768px the date column left the card at 486px and wrapped
+"Data Analysis and Web Development Intern" across three lines with the
+location text crushed against it. Tablets keep the simple full-width
+rail-and-card shape.
+
+**About: a 628px hole in the portrait column.** An `aspect-square` portrait
+in a 1/3 column is 347px tall; the bio next to it is 975px. The portrait is
+now 2/5 of the width and a 4:5 crop from `lg` up, and the quick facts
+(role / location / focus / availability) moved out from under the bio into a
+panel beneath it. The two columns now end within 56px of each other.
+
+The reshuffle is done with explicit `col-start`/`row-start` placement, *not*
+by reordering the DOM, because the single-column phone order (portrait, bio,
+facts) is the right reading order and was not up for renegotiation.
+`lg:grid-rows-[auto_1fr]` is load-bearing: without it the bio's row-span
+pushes half of its extra height into row one and floats the facts panel away
+from the portrait. `AboutSkeleton` was updated in lockstep — a skeleton in a
+different shape than the content it stands in for is a layout shift waiting
+to happen.
+
+**Skills: cards were ragged, and one column was always empty.** Two
+categories in a `lg:grid-cols-3` grid left a visibly empty third column, and
+`items-start` on that grid was actively preventing equal heights by
+collapsing every card to its own content height. Now: `auto-rows-fr` +
+`h-full` so every card matches the tallest one, `mt-auto` on the chip list so
+the chip rows align across cards (the slack lands under the heading instead
+of as a ragged gap at the bottom), and a column count capped by how many
+categories actually exist — 2 or 4 categories get two columns, 3+ gets the
+old 2/3 responsive pair. That is layout reacting to data *volume*, never to
+data *content*; no category is named anywhere in the component.
+
+**Equal heights are gated at `md`.** The first version applied them
+everywhere and padded the short card with dead vertical space in the
+single-column phone layout — visible immediately in a 390px capture. In one
+column every card is its own row, so there is nothing to equalise.
+
+**One new animation**, in the same CSS scroll-driven style Phase 24 moved
+everything else to: the timeline's connecting line draws itself downward as
+each entry scrolls in (`.timeline-line` in `styles/globals.css`). It reuses
+`view()` and inherits all three of the reveals' guarantees — no JS, gated at
+768px, and non-existent under `prefers-reduced-motion`. The range is `entry
+0% entry 200px`, a fixed distance rather than a percentage, for the reason
+the reveal rule's own comment spells out at length: a percentage into `entry`
+is a different distance for a short entry than for a tall one, and an element
+that comes to rest part-way through its range would strand the line
+half-drawn. Verified against real scrolling: 24% → 100% over 200px, then
+stable.
+
+### How this was verified without the local stack
+
+Docker was off and `.env.local` points at the local Supabase, so the real
+homepage could not be rendered locally and neither test suite could run.
+What was done instead, and it is worth reusing:
+
+- A **temporary `/layout-check` route** rendering `AboutContent`,
+  `SkillsContent` and `ExperienceContent` with hard-coded props, so `next
+  dev` could render the sections with no database at all. The About bio was
+  copied out of the *live* HTML rather than invented — a first pass with a
+  shortened bio made the About column look balanced when it was not.
+  **Deleted before committing.**
+- **Playwright driving Edge** (`channel: "msedge"`) for full-resolution
+  element screenshots at 1440 / 1024 / 768 / 390. The bundled Chromium
+  headless shell is not installed on this machine, and the browser pane
+  scales an emulated 1280px viewport down to ~280px of a screenshot, which
+  is unreadable — the E2E suite's own channel is the way to get a real
+  picture.
+- `getBoundingClientRect` measurements before and after, which is where every
+  number quoted above comes from.
+
+`npm run build` passes. **`npm test` and `npm run test:e2e` were not run**
+(both need the local Supabase stack); `tsc --noEmit` and ESLint are clean,
+and no E2E selector depends on the structures that changed.
+
+**One thing deliberately left.** At exactly 1024px the About bio still
+outruns the left column by ~250px (down from ~900px). Closing it completely
+would need either a sticky left column — which would force the facts above
+the bio on mobile — or content that does not exist in the database.

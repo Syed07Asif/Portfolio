@@ -30,6 +30,12 @@ export interface AboutPortraitProps {
  * the seed's avatar_url points at a file that doesn't exist on disk yet, so
  * it's exercised for real today, not just defensively.
  *
+ * A square on phones and tablets, a 4:5 portrait crop from `lg` up: on a
+ * laptop this sits in a narrow column beside a much taller block of bio
+ * text, and the taller crop both closes some of that gap and is the more
+ * flattering framing for a head-and-shoulders photo. `object-cover` means
+ * the ratio change never distorts the image, it only re-crops it.
+ *
  * `next.config.ts` has no `images.remotePatterns` configured yet, so this
  * only works for same-origin/relative URLs (true of the current seed data)
  * — a remote Supabase Storage URL would need that config added first, same
@@ -40,7 +46,7 @@ export function AboutPortrait({ src, name }: AboutPortraitProps) {
   const showFallback = !src || failed;
 
   return (
-    <div className="relative aspect-square w-full overflow-hidden rounded-2xl border border-border bg-surface-raised">
+    <div className="relative aspect-square w-full overflow-hidden rounded-2xl border border-border bg-surface-raised lg:aspect-4/5">
       {showFallback ? (
         <div role="img" aria-label={name} className="flex size-full items-center justify-center">
           <span aria-hidden="true" className="text-display font-display font-bold text-foreground-muted">
@@ -52,7 +58,7 @@ export function AboutPortrait({ src, name }: AboutPortraitProps) {
           src={src}
           alt={`Portrait of ${name}`}
           fill
-          sizes="(min-width: 1024px) 33vw, (min-width: 640px) 384px, 100vw"
+          sizes="(min-width: 1024px) 40vw, (min-width: 640px) 384px, 100vw"
           priority={false}
           onError={() => setFailed(true)}
           className="object-cover"

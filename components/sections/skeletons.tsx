@@ -72,26 +72,30 @@ export function HeroSkeleton() {
   );
 }
 
-/** About: the same `lg:grid-cols-3` portrait/text split, with the portrait's `aspect-square`. */
+/**
+ * About: mirrors AboutContent's real grid exactly — the 2/5 portrait column
+ * (square on mobile, 4:5 from `lg`), the 3/5 bio column spanning both rows,
+ * and the quick-facts panel under the portrait. Keeping the placement classes
+ * identical is the point: a skeleton in a different shape than the content it
+ * stands in for is a layout shift waiting to happen.
+ */
 export function AboutSkeleton() {
   return (
     <SectionShell label="Loading about">
       <HeadingSkeleton />
-      <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-3 lg:gap-16">
-        <div className="mx-auto w-full max-w-sm lg:mx-0 lg:max-w-none">
-          <Skeleton shape="rect" className="aspect-square h-auto w-full" />
+      <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-5 lg:grid-rows-[auto_1fr] lg:gap-12">
+        <div className="mx-auto w-full max-w-sm lg:col-span-2 lg:col-start-1 lg:row-start-1 lg:mx-0 lg:max-w-none">
+          <Skeleton shape="rect" className="aspect-square h-auto w-full lg:aspect-4/5" />
         </div>
-        <div className="flex flex-col gap-8 lg:col-span-2">
-          <div className="flex flex-col gap-4">
-            <Skeleton shape="text" className="h-5" />
-            <Skeleton shape="text" className="h-5" />
-            <Skeleton shape="text" className="h-5 w-4/5" />
-          </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={index} shape="rect" className="h-20" />
-            ))}
-          </div>
+        <div className="flex flex-col gap-4 lg:col-span-3 lg:col-start-3 lg:row-span-2 lg:row-start-1">
+          <Skeleton shape="text" className="h-5" />
+          <Skeleton shape="text" className="h-5" />
+          <Skeleton shape="text" className="h-5 w-4/5" />
+        </div>
+        <div className="flex flex-wrap gap-4 lg:col-span-2 lg:col-start-1 lg:row-start-2 lg:flex-col">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <Skeleton key={index} shape="rect" className="h-12 w-40 lg:w-full" />
+          ))}
         </div>
       </div>
     </SectionShell>
