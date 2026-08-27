@@ -15,7 +15,73 @@ against. Each phase's commit message
 also has a detailed writeup — `git show <hash>` for the full reasoning
 behind a specific phase if this summary isn't enough.
 
-### Start-of-session checklist (verified working at the end of Phase 24)
+## ⛳ START HERE — current state (the build is FINISHED and DEPLOYED)
+
+**Everything below this section is history.** Read this block first; the
+phase log is only needed for *why* a decision was made.
+
+| | |
+| --- | --- |
+| **Status** | Live in production. All 25 phases complete. |
+| **Live site** | `https://portfolio-ten-brown-24v11dmo3j.vercel.app` |
+| **Admin** | `/admin/login` — real Supabase Auth user, password is in the owner's password manager (not recoverable by email, see below) |
+| **Supabase project** | `atujfnmfrftftnkjivzy` (`ap-southeast-1`, Postgres 17.6, **free plan — no automatic backups**) |
+| **Vercel** | deploys `main` automatically on push |
+| **Latest tag** | `v1.0.4` |
+| **Branches** | `develop` and `main` in sync, tree clean |
+
+### What is left to do
+
+**Nothing is required.** The site works, is secure, and is backed up.
+Everything remaining is optional and listed in
+[docs/development.md](./development.md)'s FUTURE WORK: the blog (schema and
+admin exist, no public route), analytics, project filtering/search, a contact
+form, and — added during deployment — an email password-reset flow.
+
+The one thing an owner should *do periodically* is `npm run backup` after
+meaningful content changes, because the Supabase free plan takes no backups
+of its own. The latest backup lives in `backups/` (git-ignored, but inside
+the OneDrive-synced folder, so it has an offsite copy).
+
+### If you are restarting work here
+
+1. `git log --oneline -1` should show the commit this was written against
+   (see the "Latest commit" bullet in "Where things stand"), and
+   `git status --short` should be empty.
+2. **Adding content needs no code and no local setup at all** — it is done
+   through `/admin` on the live site. Only reach for the local stack if you
+   are changing *behaviour*.
+3. For code changes, follow the Phase 24 checklist below to bring up Docker,
+   the local Supabase stack and a server, then `npm test` / `npm run test:e2e`
+   before believing anything is safe.
+4. Deploy by merging `develop` into `main` and pushing. Vercel does the rest;
+   allow ~5 minutes, and see the deployment notes about *not* polling the site
+   while you wait.
+
+### Five things that will bite you, all learned the hard way
+
+Each of these cost real time during deployment and none is visible in the
+code. Full write-ups are in the final entries of this file.
+
+1. **`??` does not fall back on `""`.** An env var that exists but is empty
+   crashed the first production build with an error naming an unrelated
+   route (`/_not-found`). Fixed in `v1.0.2`, with tests.
+2. **The admin invite / password-reset emails do not work** — this app has
+   no auth-callback page, only a login form. Manage the password in the
+   Supabase dashboard. See [docs/deployment.md](./deployment.md).
+3. **`revalidatePath` does not reach Next's metadata routes.** That is why
+   `app/sitemap.ts` is `force-dynamic` rather than ISR-cached (`v1.0.4`).
+   A route cache and a data cache are different things.
+4. **A `loading.tsx` turns `notFound()` into a soft 404**, because the
+   response streams and the status flushes first. That is why
+   `app/(site)/projects/[slug]/` deliberately has none (`v1.0.3`).
+5. **Do not poll a fresh Vercel deploy.** ~40 requests in ten minutes trips
+   its bot protection and every scripted request starts returning 403.
+
+### Start-of-session checklist — LOCAL DEVELOPMENT ONLY (from Phase 24)
+
+> Only needed if you are changing code. Content editing happens on the live
+> site and needs none of this.
 
 > **Resuming mid-build?** Phases 1–24 are complete. **Phase 24 (verify and
 > harden) is done** — accessibility, performance and a real test suite; read
