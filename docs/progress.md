@@ -29,7 +29,7 @@ phase log is only needed for *why* a decision was made.
 | **Vercel** | deploys `main` automatically on push |
 | **Latest tag** | `v1.0.6` — the final portfolio state |
 | **Branches** | `develop` and `main` in sync, tree clean |
-| **Resume point** | `8a8a18c` on `develop` — the grid-column cap (`v1.0.6`), the last entry in this file. **This is the final portfolio resume point**: the build is complete, deployed, and the laptop layout pass is done. Anything after this is ordinary content editing in `/admin`. |
+| **Resume point** | `326d3b9` on `develop` — the docs catching up with the domain move, the last entry in this file. The code is finished at `v1.0.6`; the two commits after it are a rebuild trigger and this doc update. **This is the final portfolio resume point** — anything after it is content editing in `/admin`. |
 
 ### What is left to do
 
