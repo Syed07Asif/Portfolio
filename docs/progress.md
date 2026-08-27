@@ -29,7 +29,7 @@ phase log is only needed for *why* a decision was made.
 | **Vercel** | deploys `main` automatically on push |
 | **Latest tag** | `v1.0.6` — the final portfolio state |
 | **Branches** | `develop` and `main` in sync, tree clean |
-| **Resume point** | `326d3b9` on `develop` — the docs catching up with the domain move, the last entry in this file. The code is finished at `v1.0.6`; the two commits after it are a rebuild trigger and this doc update. **This is the final portfolio resume point** — anything after it is content editing in `/admin`. |
+| **Resume point** | `326d3b9` on `develop` — the docs catching up with the domain move, the last entry in this file. The code is finished at `v1.0.6`; the commits after it are a rebuild trigger and doc updates. **This is the final portfolio resume point** — anything after it is content editing in `/admin`. |
 
 ### What is left to do
 
@@ -3754,9 +3754,14 @@ an OG image.
 Verified after the rebuild: all six surfaces on the new hostname, no
 localhost fallback anywhere, and the project OG card serving `200` directly.
 
-**Still pointing at the old hostname, and only the owner can check it:**
-Supabase's **Authentication → URL Configuration → Site URL**, which
-`docs/deployment.md` says to set to the production origin. It has no effect
-on this app today — the auth emails it governs have nowhere to land, which is
-its own entry in this file — so it is recorded here rather than treated as
-broken.
+**Supabase's own copy of the URL was stale too, and has since been fixed:**
+**Authentication → URL Configuration → Site URL** (plus its Redirect URLs)
+now names `https://syedasif.vercel.app`, per `docs/deployment.md`'s
+instruction to point it at the production origin. Note the evidence level —
+this one is reported by the owner, not verified here: unlike every other
+claim in this entry, the setting is not exposed on any public endpoint, so
+there is nothing to curl. It changes nothing about the site's behaviour
+today either, because the auth emails it governs have nowhere to land in
+this app (its own entry in this file). It matters only if the password-reset
+flow in FUTURE WORK is ever built, which would otherwise inherit a dead
+hostname.
