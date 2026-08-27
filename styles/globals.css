@@ -226,6 +226,15 @@ html {
  *     left stuck at `opacity: 0` by an unsupported feature.
  * ------------------------------------------------------------------------ */
 
+@keyframes timeline-draw {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
 @keyframes reveal-fade-up {
   from {
     opacity: 0;
@@ -294,6 +303,28 @@ html {
       animation: reveal-fade-up linear both;
       animation-timeline: view();
       animation-range: entry 0% entry 100px;
+    }
+
+    /*
+     * The Experience timeline's connecting line draws itself downward as
+     * each entry scrolls in, instead of being a static hairline sitting
+     * between two cards. It rides the same `view()` machinery as the
+     * reveals above and inherits all three of their guarantees for free:
+     * no JS, nothing above 768px-only cost, and no existence at all under
+     * `prefers-reduced-motion` (the line is then simply drawn).
+     *
+     * `entry 200px` rather than a percentage, for the reason spelled out
+     * at length above: a percentage into `entry` is a different distance
+     * for a short entry than for a tall one, and one that scrolls to rest
+     * part-way through its own range would strand the line half-drawn.
+     * The element is `aria-hidden` decoration either way, but a fixed
+     * 200px of scroll finishes it well before the next card is read.
+     */
+    .timeline-line {
+      transform-origin: top;
+      animation: timeline-draw linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 200px;
     }
   }
   }

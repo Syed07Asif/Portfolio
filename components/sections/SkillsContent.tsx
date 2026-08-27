@@ -18,6 +18,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import type { SkillCategoryWithSkills, SkillWithCategory } from "@/types/content";
 
 /**
@@ -109,8 +110,8 @@ function SkillChip({ skill }: { skill: SkillWithCategory }) {
  */
 function CategoryCard({ category }: { category: SkillCategoryWithSkills }) {
   return (
-    <div>
-      <Card padding="lg" className="flex flex-col gap-5">
+    <div className="h-full">
+      <Card padding="lg" hover="lift" className="flex h-full flex-col gap-5">
         <div className="flex items-start gap-4">
           {renderCategoryIcon(category.icon)}
           <div className="flex flex-col gap-1">
@@ -121,7 +122,15 @@ function CategoryCard({ category }: { category: SkillCategoryWithSkills }) {
           </div>
         </div>
 
-        <ul className="flex flex-wrap gap-2">
+        {/*
+         * `mt-auto` is what makes the equal-height grid read as designed
+         * rather than as an accident: every card in the row is stretched to
+         * the tallest one, so pinning the chips to the bottom aligns every
+         * card's chip row on the same baseline, and the slack lands as
+         * breathing room under the heading instead of as a ragged gap below
+         * the chips.
+         */}
+        <ul className="mt-auto flex flex-wrap gap-2">
           {category.skills.map((skill) => (
             <SkillChip key={skill.id} skill={skill} />
           ))}
@@ -131,23 +140,48 @@ function CategoryCard({ category }: { category: SkillCategoryWithSkills }) {
   );
 }
 
+/**
+ * The grid's column count is capped by how many categories there actually
+ * are, so the row is always full. Three columns holding two cards left a
+ * visibly empty third column on a laptop; with `md:grid-cols-2` those same
+ * two cards each take half the width instead. Four categories get two
+ * columns for the same reason (three would strand a lone card on row two).
+ * This is layout reacting to data volume, not to data *content* — no
+ * category name is ever named here.
+ */
+function gridColumnsClassName(count: number): string {
+  if (count === 1) return "mx-auto max-w-2xl";
+  if (count === 2 || count === 4) return "md:grid-cols-2";
+  return "md:grid-cols-2 lg:grid-cols-3";
+}
+
 export interface SkillsContentProps {
   categories: SkillCategoryWithSkills[];
 }
 
 /**
- * Two levels of stagger, both riding lib/motion.ts's existing
- * staggerContainer/staggerItem variants unmodified: categories cascade in
- * relative to each other (outer container), and each category's own skills
- * cascade in relative to each other (nested container, inheriting the
- * "visible" state from its parent once that category itself has revealed —
- * standard Framer variant propagation, no separate viewport trigger needed
- * on the inner list).
+ * A uniform card grid: every category card is the same size as the tallest
+ * one, whatever mix of 1-skill and 20-skill categories the database holds.
+ * The cards reveal as `.reveal-group` children (CSS scroll-driven, see
+ * styles/globals.css) — there is no Framer stagger here any more.
  */
 export function SkillsContent({ categories }: SkillsContentProps) {
   return (
     <div
-      className="reveal-group grid grid-cols-1 items-start gap-6 md:grid-cols-2 lg:grid-cols-3"
+      className={cn(
+        // `auto-rows-fr` + `h-full` on the card is the equal-height rule: every
+        // row is sized to its tallest card, so a 2-skill category and a
+        // 20-skill one render at identical size. `items-start`, which used to
+        // be here, actively prevented that — it collapsed each card to its own
+        // content height.
+        //
+        // Gated at `md` because equal heights only mean anything once there
+        // are two cards side by side. In the single-column phone layout every
+        // card is its own row, so forcing `1fr` rows there would pad the short
+        // ones with dead vertical space and make the reader scroll past it.
+        "reveal-group grid grid-cols-1 gap-6 md:auto-rows-fr",
+        gridColumnsClassName(categories.length),
+      )}
     >
       {categories.map((category) => (
         <CategoryCard key={category.id} category={category} />
