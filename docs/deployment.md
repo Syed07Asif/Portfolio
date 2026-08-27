@@ -35,11 +35,11 @@ dashboard to answer "what is this pointed at?"
 
 | | |
 | --- | --- |
-| **Production URL** | `https://portfolio-ten-brown-24v11dmo3j.vercel.app` |
+| **Production URL** | `https://syedasif.vercel.app` |
 | **Supabase project ref** | `atujfnmfrftftnkjivzy` |
 | **Supabase region** | `ap-southeast-1` (Singapore) |
 | **Postgres** | 17.6 |
-| **Custom domain** | none yet |
+| **Custom domain** | none — `syedasif.vercel.app` is a Vercel-assigned project alias, not a purchased domain |
 | **Vercel production branch** | `main` |
 
 **The production URL is the awkward one on purpose.** `portfolio-ten-brown.vercel.app`
@@ -48,6 +48,27 @@ and briefly ended up in `NEXT_PUBLIC_SITE_URL` because it answered HTTP 200
 to a probe. A 200 from a guessed `*.vercel.app` hostname proves something is
 there, not that it is yours. Read the real domain from **Settings → Domains**
 and check the page content, never infer it from a status code.
+
+**The production URL changed after that.** `syedasif.vercel.app` was added as
+a project alias and is now the primary domain; the original auto-generated
+`portfolio-ten-brown-24v11dmo3j.vercel.app` answers `307` and redirects to
+it. The paragraph above is kept because its lesson still stands — but the
+awkward hostname it names is no longer the one to put anywhere.
+
+`NEXT_PUBLIC_SITE_URL` has to be changed *with* the domain, and was not:
+canonical tags, `og:url`, JSON-LD ids, `robots.txt`'s `Host:` and every
+sitemap `<loc>` kept advertising the old hostname long after the site itself
+had moved, because that variable is the single source all of them derive
+from. Two traps in changing it:
+
+- **`NEXT_PUBLIC_*` is inlined at build time.** Saving the variable changes
+  nothing until a new build runs — the same trap this document already
+  records for the API keys.
+- **Vercel refuses to save a `NEXT_PUBLIC_`-prefixed variable as a Secret**,
+  and will not convert an existing secret to Config, because saved secrets
+  are write-only. The variable has to be deleted and re-created as **Config**.
+  While it is absent a build would fall back to `http://localhost:3000`
+  ([`lib/seo.ts`](../lib/seo.ts)), so delete and re-create in one sitting.
 
 Two things to know when verifying a deploy from a script:
 

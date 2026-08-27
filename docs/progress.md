@@ -23,7 +23,7 @@ phase log is only needed for *why* a decision was made.
 | | |
 | --- | --- |
 | **Status** | Live in production. All 25 phases complete, plus a post-launch laptop-layout pass. **This is the final state of the portfolio.** |
-| **Live site** | `https://portfolio-ten-brown-24v11dmo3j.vercel.app` |
+| **Live site** | `https://syedasif.vercel.app` (the original `portfolio-ten-brown-24v11dmo3j.vercel.app` now 307s to it) |
 | **Admin** | `/admin/login` — real Supabase Auth user, password is in the owner's password manager (not recoverable by email, see below) |
 | **Supabase project** | `atujfnmfrftftnkjivzy` (`ap-southeast-1`, Postgres 17.6, **free plan — no automatic backups**) |
 | **Vercel** | deploys `main` automatically on push |
@@ -159,7 +159,7 @@ recreating that admin account afterward. This bit Phase 21.
 ## Where things stand
 
 > **Phases 1-25 are complete, and the site is DEPLOYED and live** at
-> `https://portfolio-ten-brown-24v11dmo3j.vercel.app` (Supabase project
+> `https://syedasif.vercel.app` (Supabase project
 > `atujfnmfrftftnkjivzy`). See the deployment entry at the very end of this
 > file for what was done and the three real problems it surfaced; live
 > details are in [docs/deployment.md](./deployment.md#the-live-deployment).
@@ -3708,3 +3708,55 @@ are not mistaken for layout bugs later): the SignMind X project's
 `short_description` is the placeholder string "hi", which shows on its card
 and feeds its meta description; and the GoldMoon experience row has no
 company logo, so its card shows an empty avatar circle.
+
+---
+
+## Post-launch: the site moved domain and its metadata did not
+
+`syedasif.vercel.app` was added as a Vercel project alias and became the
+primary domain — the original auto-generated
+`portfolio-ten-brown-24v11dmo3j.vercel.app` now answers `307` and redirects
+to it. **`NEXT_PUBLIC_SITE_URL` was not changed with it**, and because that
+one variable is what [`lib/seo.ts`](../lib/seo.ts)'s `SITE_URL` derives
+everything from, the live site spent that whole period advertising a
+hostname it redirects away from:
+
+| Surface | Was | Now |
+| --- | --- | --- |
+| `<link rel="canonical">` | old hostname | `https://syedasif.vercel.app` |
+| `og:url` | old hostname | new |
+| JSON-LD `@id` / `url` | old hostname | new |
+| `robots.txt` `Host:` | old hostname | new |
+| every sitemap `<loc>` | old hostname | new |
+| project `og:image` | old hostname (and a `307` on the way to the image) | new, `200` with zero redirects |
+
+This is worth more than a cosmetic note: a canonical tag pointing at a
+hostname you never share hands that page's ranking signals to a URL nobody
+links to, and some link-preview crawlers will not follow a redirect to fetch
+an OG image.
+
+**Two traps in fixing it**, both of which cost a round trip:
+
+1. **`NEXT_PUBLIC_*` is inlined at build time.** Saving the variable in
+   Vercel changes nothing until a build runs — this file already records the
+   same trap for API keys, and it applies identically here. The rebuild was
+   an empty commit on `main` (`1904978`).
+2. **Vercel refuses to save a `NEXT_PUBLIC_`-prefixed variable as a Secret**
+   ("remove the public framework prefix to keep this value private"), *and*
+   refuses to convert an existing secret to Config, because saved secrets are
+   write-only. The only way through is to delete the variable and re-create
+   it as **Config**. Note the failure mode in the gap: with the variable
+   absent, `lib/seo.ts` falls back to `http://localhost:3000` rather than
+   failing the build, so a deploy landing between the delete and the
+   re-create would ship canonical URLs pointing at localhost. Delete and
+   re-create in one sitting.
+
+Verified after the rebuild: all six surfaces on the new hostname, no
+localhost fallback anywhere, and the project OG card serving `200` directly.
+
+**Still pointing at the old hostname, and only the owner can check it:**
+Supabase's **Authentication → URL Configuration → Site URL**, which
+`docs/deployment.md` says to set to the production origin. It has no effect
+on this app today — the auth emails it governs have nowhere to land, which is
+its own entry in this file — so it is recorded here rather than treated as
+broken.
