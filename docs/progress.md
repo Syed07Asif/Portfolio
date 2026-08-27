@@ -29,6 +29,7 @@ phase log is only needed for *why* a decision was made.
 | **Vercel** | deploys `main` automatically on push |
 | **Latest tag** | `v1.0.4` |
 | **Branches** | `develop` and `main` in sync, tree clean |
+| **Resume point** | `038bbc2` on `develop` — the commit this block was written against |
 
 ### What is left to do
 
